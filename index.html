@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4eee3">
+  <title>Сбор — расписание труппы</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Prata&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="grain"></div>
+  <div id="authScreen" class="auth-screen">
+    <section class="auth-story">
+      <a class="brand brand-light" href="#" aria-label="Сбор"><span>С</span> СБОР</a>
+      <div class="story-copy">
+        <p class="eyebrow">ПЛАНИРОВАНИЕ БЕЗ ХАОСА</p>
+        <h1>Вся труппа<br>в одном ритме.</h1>
+        <p>Свободные дни, составы и репетиции — на две недели вперёд.</p>
+      </div>
+      <div class="story-foot"><span>14 дней</span><i></i><span>один взгляд</span></div>
+    </section>
+    <section class="auth-panel">
+      <div class="mobile-brand"><span>С</span> СБОР</div>
+      <div class="auth-box">
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-auth-tab="login">Войти</button>
+          <button class="auth-tab" data-auth-tab="register">Регистрация</button>
+        </div>
+        <div id="loginForm" class="auth-form">
+          <h2>С возвращением</h2>
+          <p>Войдите, чтобы отметить доступность.</p>
+          <label>Почта<input id="loginEmail" type="email" value="demo@sbor.app" placeholder="name@example.com"></label>
+          <label>Пароль<input id="loginPassword" type="password" value="demo1234" placeholder="Не менее 8 символов"></label>
+          <button id="loginButton" class="primary wide">Войти</button>
+          <button id="demoButton" class="text-button">Открыть демо без регистрации →</button>
+        </div>
+        <div id="registerForm" class="auth-form hidden">
+          <h2>Создать аккаунт</h2>
+          <p>Администратор позже добавит вас в составы.</p>
+          <label>Имя и фамилия<input id="registerName" type="text" placeholder="Анна Смирнова"></label>
+          <label>Почта<input id="registerEmail" type="email" placeholder="name@example.com"></label>
+          <label>Пароль<input id="registerPassword" type="password" placeholder="Не менее 8 символов"></label>
+          <button id="registerButton" class="primary wide">Зарегистрироваться</button>
+        </div>
+        <p class="demo-note">Прототип сохраняет вход и изменения на этом устройстве.</p>
+      </div>
+    </section>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand"><span>С</span> СБОР</div>
+      <nav>
+        <button class="nav-link active" data-page="schedule"><span class="nav-icon">⌑</span> Моя неделя</button>
+        <button class="nav-link" data-page="shows"><span class="nav-icon">◇</span> Спектакли <b>3</b></button>
+        <button class="nav-link" data-page="team"><span class="nav-icon">◎</span> Участники</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button id="adminToggle" class="admin-toggle"><span>↗</span><span><small>Режим</small>Участник</span></button>
+        <button id="logoutButton" class="logout">Выйти</button>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <button id="mobileMenu" class="icon-button menu-button">☰</button>
+        <div class="top-title"><p id="todayLabel"></p><h2 id="pageTitle">Моя доступность</h2></div>
+        <div class="profile">
+          <div class="profile-copy"><strong id="profileName">Анна Смирнова</strong><span id="profileRole">Актриса</span></div>
+          <div id="avatar" class="avatar">АС</div>
+        </div>
+      </header>
+
+      <section id="schedulePage" class="page active">
+        <div class="intro-row">
+          <div><p class="eyebrow dark">БЛИЖАЙШИЕ 14 ДНЕЙ</p><h1>Когда вы свободны?</h1><p class="subtitle">Нажмите на день, чтобы изменить статус. Добавьте время, если свободны не весь день.</p></div>
+          <button id="copyWeek" class="secondary">Повторить неделю</button>
+        </div>
+
+        <div class="legend">
+          <span><i class="dot green"></i>Свободен</span><span><i class="dot yellow"></i>С ограничениями</span><span><i class="dot red"></i>Не могу</span><span><i class="dot gray"></i>Не отмечено</span>
+        </div>
+        <div id="calendar" class="calendar"></div>
+
+        <section class="upcoming">
+          <div class="section-title"><div><p class="eyebrow dark">ОБЩЕЕ РАСПИСАНИЕ</p><h2>Ближайшие события</h2></div><button class="text-button" data-go="shows">Все спектакли →</button></div>
+          <div id="eventList" class="event-list"></div>
+        </section>
+      </section>
+
+      <section id="showsPage" class="page">
+        <div class="intro-row"><div><p class="eyebrow dark">ПОСТАНОВКИ</p><h1>Спектакли</h1><p class="subtitle">Составы, время и готовность команды.</p></div><button id="addShow" class="primary admin-only">+ Новый спектакль</button></div>
+        <div id="showGrid" class="show-grid"></div>
+      </section>
+
+      <section id="teamPage" class="page">
+        <div class="intro-row"><div><p class="eyebrow dark">ТРУППА</p><h1>Участники</h1><p class="subtitle">Фильтруйте участников по спектаклям и проверяйте доступность.</p></div></div>
+        <div id="filters" class="filters"></div>
+        <div class="table-wrap"><table><thead><tr><th>Участник</th><th>Спектакли</th><th>7 дней</th><th class="admin-only">Действия</th></tr></thead><tbody id="teamTable"></tbody></table></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="dayModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <button class="modal-close" data-close>×</button>
+      <p class="eyebrow dark">ДОСТУПНОСТЬ</p><h2 id="modalDate"></h2>
+      <div class="status-options">
+        <button data-status="free"><i class="dot green"></i> Свободен</button>
+        <button data-status="limited"><i class="dot yellow"></i> С ограничениями</button>
+        <button data-status="busy"><i class="dot red"></i> Не могу</button>
+      </div>
+      <div id="timeFields" class="time-fields hidden"><label>С<input id="timeFrom" type="time" value="18:00"></label><label>До<input id="timeTo" type="time" value="22:00"></label></div>
+      <button id="saveDay" class="primary wide">Сохранить</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast">Сохранено</div>
+  <script src="app.js"></script>
+</body>
+</html>
