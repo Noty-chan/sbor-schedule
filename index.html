@@ -54,8 +54,10 @@
     <aside class="sidebar">
       <div class="brand"><span>С</span> СБОР</div>
       <nav>
-        <button class="nav-link active" data-page="schedule"><span class="nav-icon">⌑</span> Моя неделя</button>
-        <button class="nav-link" data-page="shows"><span class="nav-icon">◇</span> Спектакли <b>3</b></button>
+        <button class="nav-link active" data-page="schedule"><span class="nav-icon">⌑</span> Доступность</button>
+        <button class="nav-link" data-page="slots"><span class="nav-icon">◴</span> Слоты <b id="slotBadge">4</b></button>
+        <button class="nav-link" data-page="matches"><span class="nav-icon">⌁</span> Пересечения</button>
+        <button class="nav-link" data-page="shows"><span class="nav-icon">◇</span> Спектакли</button>
         <button class="nav-link" data-page="team"><span class="nav-icon">◎</span> Участники</button>
       </nav>
       <div class="sidebar-bottom">
@@ -76,19 +78,32 @@
 
       <section id="schedulePage" class="page active">
         <div class="intro-row">
-          <div><p class="eyebrow dark">БЛИЖАЙШИЕ 14 ДНЕЙ</p><h1>Когда вы свободны?</h1><p class="subtitle">Нажмите на день, чтобы изменить статус. Добавьте время, если свободны не весь день.</p></div>
+          <div><p class="eyebrow dark">БЛИЖАЙШИЕ 14 ДНЕЙ</p><h1>Быстрая отметка</h1><p class="subtitle">Нажимайте на день: один раз — свободен, два — с ограничениями, три — занят. Карандаш открывает точные настройки.</p></div>
           <button id="copyWeek" class="secondary">Повторить неделю</button>
         </div>
 
         <div class="legend">
           <span><i class="dot green"></i>Свободен</span><span><i class="dot yellow"></i>С ограничениями</span><span><i class="dot red"></i>Не могу</span><span><i class="dot gray"></i>Не отмечено</span>
         </div>
-        <div id="calendar" class="calendar"></div>
+        <div class="quick-hint"><strong>Быстрый режим включён</strong><span>Каждое нажатие меняет цвет по кругу</span></div>
+        <div id="calendar" class="calendar compact-calendar"></div>
 
         <section class="upcoming">
           <div class="section-title"><div><p class="eyebrow dark">ОБЩЕЕ РАСПИСАНИЕ</p><h2>Ближайшие события</h2></div><button class="text-button" data-go="shows">Все спектакли →</button></div>
           <div id="eventList" class="event-list"></div>
         </section>
+      </section>
+
+      <section id="slotsPage" class="page">
+        <div class="intro-row"><div><p class="eyebrow dark">КОНКРЕТНОЕ ВРЕМЯ</p><h1>Слоты</h1><p class="subtitle">Ответьте по каждому времени отдельно — так администратор сразу увидит реальное пересечение.</p></div><button id="addSlot" class="primary admin-only">+ Создать слот</button></div>
+        <div id="slotFilters" class="filters"></div>
+        <div id="slotList" class="slot-list"></div>
+      </section>
+
+      <section id="matchesPage" class="page">
+        <div class="intro-row"><div><p class="eyebrow dark">ОБЩЕЕ ОКНО</p><h1>Пересечения</h1><p class="subtitle">Готовность всей команды по предложенным слотам — от лучших вариантов к сложным.</p></div></div>
+        <div id="matchSummary" class="match-summary"></div>
+        <div id="matchList" class="match-list"></div>
       </section>
 
       <section id="showsPage" class="page">
@@ -115,6 +130,21 @@
       </div>
       <div id="timeFields" class="time-fields hidden"><label>С<input id="timeFrom" type="time" value="18:00"></label><label>До<input id="timeTo" type="time" value="22:00"></label></div>
       <button id="saveDay" class="primary wide">Сохранить</button>
+    </div>
+  </div>
+
+  <div id="slotModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <button class="modal-close" data-close-slot>×</button>
+      <p class="eyebrow dark">НОВЫЙ СЛОТ</p><h2>Предложить время</h2>
+      <div class="slot-form">
+        <label>Название<input id="slotTitle" type="text" placeholder="Репетиция второго акта"></label>
+        <label>Спектакль<select id="slotProduction"><option>Чайка</option><option>Гроза</option><option>Три сестры</option><option>Общее</option></select></label>
+        <label>Дата<input id="slotDate" type="date"></label>
+        <div class="time-fields"><label>С<input id="slotFrom" type="time" value="18:00"></label><label>До<input id="slotTo" type="time" value="21:00"></label></div>
+        <label>Место<input id="slotPlace" type="text" placeholder="Репетиционный зал"></label>
+      </div>
+      <button id="saveSlot" class="primary wide">Создать слот</button>
     </div>
   </div>
 
