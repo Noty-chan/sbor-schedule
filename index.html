@@ -32,20 +32,19 @@
         <div id="loginForm" class="auth-form">
           <h2>С возвращением</h2>
           <p>Войдите, чтобы отметить доступность.</p>
-          <label>Почта<input id="loginEmail" type="email" value="demo@sbor.app" placeholder="name@example.com"></label>
-          <label>Пароль<input id="loginPassword" type="password" value="demo1234" placeholder="Не менее 8 символов"></label>
+          <label>Почта<input id="loginEmail" type="email" autocomplete="email" placeholder="name@example.com"></label>
+          <label>Пароль<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Не менее 8 символов"></label>
           <button id="loginButton" class="primary wide">Войти</button>
-          <button id="demoButton" class="text-button">Открыть демо без регистрации →</button>
         </div>
         <div id="registerForm" class="auth-form hidden">
           <h2>Создать аккаунт</h2>
           <p>Администратор позже добавит вас в составы.</p>
-          <label>Имя и фамилия<input id="registerName" type="text" placeholder="Анна Смирнова"></label>
-          <label>Почта<input id="registerEmail" type="email" placeholder="name@example.com"></label>
-          <label>Пароль<input id="registerPassword" type="password" placeholder="Не менее 8 символов"></label>
+          <label>Имя и фамилия<input id="registerName" type="text" autocomplete="name" placeholder="Анна Смирнова"></label>
+          <label>Почта<input id="registerEmail" type="email" autocomplete="email" placeholder="name@example.com"></label>
+          <label>Пароль<input id="registerPassword" type="password" autocomplete="new-password" placeholder="Не менее 8 символов"></label>
           <button id="registerButton" class="primary wide">Зарегистрироваться</button>
         </div>
-        <p class="demo-note">Прототип сохраняет вход и изменения на этом устройстве.</p>
+        <p class="demo-note">Вход и расписание синхронизируются через Firebase.</p>
       </div>
     </section>
   </div>
@@ -149,6 +148,6 @@
   </div>
 
   <div id="toast" class="toast">Сохранено</div>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
