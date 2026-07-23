@@ -26,6 +26,7 @@ import { firebaseConfig } from './firebase-config.js';
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
+const BOOTSTRAP_ADMIN_UID = 'gABqRTDUcDRd4VH0lxswMIJw7B83';
 
 const ruDays = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const ruMonths = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
@@ -37,7 +38,7 @@ const shows = [
 
 function fallbackProfiles(user) {
   return [
-    { id: user.uid, name: user.displayName || user.email.split('@')[0], email: user.email, role: 'admin', shows: ['Чайка', 'Гроза'] },
+    { id: user.uid, name: user.displayName || user.email.split('@')[0], email: user.email, role: user.uid === BOOTSTRAP_ADMIN_UID ? 'admin' : 'member', shows: ['Чайка', 'Гроза'] },
     { id: 'demo-mikhail', name: 'Михаил Волков', role: 'member', shows: ['Чайка', 'Три сестры'] },
     { id: 'demo-irina', name: 'Ирина Крылова', role: 'member', shows: ['Чайка'] },
     { id: 'demo-denis', name: 'Денис Петров', role: 'member', shows: ['Гроза'] },
