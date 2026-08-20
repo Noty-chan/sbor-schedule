@@ -29,22 +29,24 @@
           <button class="auth-tab active" data-auth-tab="login">Войти</button>
           <button class="auth-tab" data-auth-tab="register">Регистрация</button>
         </div>
-        <div id="loginForm" class="auth-form">
+        <form id="loginForm" class="auth-form" novalidate>
           <h2>С возвращением</h2>
           <p>Войдите, чтобы отметить доступность.</p>
           <label>Почта<input id="loginEmail" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="name@example.com"></label>
           <label>Пароль<input id="loginPassword" type="password" autocomplete="current-password" enterkeyhint="go" placeholder="Не менее 8 символов"></label>
-          <button id="loginButton" class="primary wide">Войти</button>
-          <button id="resetPasswordButton" class="text-button">Восстановить пароль</button>
-        </div>
-        <div id="registerForm" class="auth-form hidden">
+          <button id="loginButton" type="submit" class="primary wide">Войти</button>
+          <button id="resetPasswordButton" type="button" class="text-button">Восстановить пароль</button>
+          <p id="loginMessage" class="auth-message" role="alert" aria-live="polite"></p>
+        </form>
+        <form id="registerForm" class="auth-form hidden" novalidate>
           <h2>Создать аккаунт</h2>
           <p>Администратор позже добавит вас в составы.</p>
           <label>Имя и фамилия<input id="registerName" type="text" autocomplete="name" placeholder="Анна Смирнова"></label>
           <label>Почта<input id="registerEmail" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="name@example.com"></label>
           <label>Пароль<input id="registerPassword" type="password" autocomplete="new-password" enterkeyhint="go" placeholder="Не менее 8 символов"></label>
-          <button id="registerButton" class="primary wide">Зарегистрироваться</button>
-        </div>
+          <button id="registerButton" type="submit" class="primary wide">Зарегистрироваться</button>
+          <p id="registerMessage" class="auth-message" role="alert" aria-live="polite"></p>
+        </form>
         <p class="demo-note">Аккаунт работает через Firebase; расписание пока сохраняется на этом устройстве.</p>
       </div>
     </section>

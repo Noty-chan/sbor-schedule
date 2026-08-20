@@ -27,6 +27,7 @@ button,input,select{-webkit-tap-highlight-color:transparent}
 .modal-backdrop{padding-top:max(20px,env(safe-area-inset-top));padding-right:max(20px,env(safe-area-inset-right));padding-bottom:max(20px,env(safe-area-inset-bottom));padding-left:max(20px,env(safe-area-inset-left));overflow-y:auto;-webkit-overflow-scrolling:touch}
 .modal{max-height:calc(100vh - 40px);max-height:calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain}
 .toast{bottom:max(25px,calc(env(safe-area-inset-bottom) + 12px))}
+.auth-form .auth-message{min-height:18px;margin:12px 0 0;color:#8b3f35;font-size:11px;line-height:1.45}.auth-form .auth-message.success{color:#465c40}
 @media(max-width:760px){
   .auth-panel{min-height:100vh;min-height:100dvh;padding-top:max(26px,env(safe-area-inset-top));padding-right:max(26px,env(safe-area-inset-right));padding-bottom:max(26px,env(safe-area-inset-bottom));padding-left:max(26px,env(safe-area-inset-left))}
   .mobile-brand{top:max(27px,env(safe-area-inset-top));left:max(27px,env(safe-area-inset-left))}

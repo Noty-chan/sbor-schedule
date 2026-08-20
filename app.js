@@ -154,9 +154,19 @@ function readableError(error) {
     'auth/weak-password': 'Пароль должен содержать минимум 6 символов',
     'auth/too-many-requests': 'Слишком много попыток. Попробуйте позже',
     'auth/operation-not-allowed': 'В Firebase ещё не включён вход по почте',
+    'auth/network-request-failed': 'Нет соединения с Firebase. Проверьте интернет и попробуйте ещё раз',
+    'auth/unauthorized-domain': 'Этот адрес сайта ещё не разрешён в настройках Firebase',
+    'auth/internal-error': 'Firebase временно не ответил. Попробуйте ещё раз',
     'permission-denied': 'Firestore отклонил запрос. Проверьте правила доступа'
   };
   return messages[error?.code] || error?.message || 'Не удалось выполнить действие';
+}
+
+function setAuthMessage(form, message = '', success = false) {
+  const element = $(`#${form}Message`);
+  if (!element) return;
+  element.textContent = message;
+  element.classList.toggle('success', success);
 }
 
 function currentName() {
@@ -866,26 +876,24 @@ $$('.auth-tab').forEach(button => {
     button.classList.add('active');
     $('#loginForm').classList.toggle('hidden', button.dataset.authTab !== 'login');
     $('#registerForm').classList.toggle('hidden', button.dataset.authTab !== 'register');
+    setAuthMessage('login');
+    setAuthMessage('register');
   };
 });
 
-$('#loginButton').onclick = async () => {
+$('#loginForm').onsubmit = async event => {
+  event.preventDefault();
   const button = $('#loginButton');
+  setAuthMessage('login');
   setBusy(button, true);
   try {
     await signInWithEmailAndPassword(auth, $('#loginEmail').value.trim(), $('#loginPassword').value);
   } catch (error) {
-    toast(readableError(error));
+    setAuthMessage('login', readableError(error));
   } finally {
     setBusy(button, false);
   }
 };
-
-$('#loginPassword').addEventListener('keydown', event => {
-  if (event.key !== 'Enter' || $('#loginButton').disabled) return;
-  event.preventDefault();
-  $('#loginButton').click();
-});
 
 $('#resetPasswordButton').onclick = async () => {
   const email = $('#loginEmail').value.trim();
@@ -901,43 +909,35 @@ $('#resetPasswordButton').onclick = async () => {
   }
 };
 
-$('#registerButton').onclick = async () => {
+$('#registerForm').onsubmit = async event => {
+  event.preventDefault();
   const name = $('#registerName').value.trim();
   const email = $('#registerEmail').value.trim();
   const password = $('#registerPassword').value;
   if (!name || !email.includes('@') || password.length < 6) {
-    toast('Заполните имя, почту и пароль от 6 символов');
+    setAuthMessage('register', 'Заполните имя, почту и пароль от 6 символов');
     return;
   }
   const button = $('#registerButton');
+  setAuthMessage('register');
   setBusy(button, true);
   try {
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(credential.user, { displayName: name });
-    try {
-      await setDoc(doc(db, 'profiles', credential.user.uid), {
-        name,
-        email,
-        role: 'member',
-        shows: [],
-        createdAt: serverTimestamp()
-      });
-    } catch (firestoreError) {
-      // Authentication already succeeded. Closed Firestore rules are handled
-      // by the automatic local fallback in onAuthStateChanged.
-    }
+    await setDoc(doc(db, 'profiles', credential.user.uid), {
+      name,
+      email,
+      role: 'member',
+      shows: [],
+      createdAt: serverTimestamp()
+    }, { merge: true });
+    setAuthMessage('register', 'Аккаунт создан. Открываем расписание…', true);
   } catch (error) {
-    toast(readableError(error));
+    setAuthMessage('register', readableError(error));
   } finally {
     setBusy(button, false);
   }
 };
-
-$('#registerPassword').addEventListener('keydown', event => {
-  if (event.key !== 'Enter' || $('#registerButton').disabled) return;
-  event.preventDefault();
-  $('#registerButton').click();
-});
 
 $('#logoutButton').onclick = async () => {
   await signOut(auth);
