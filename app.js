@@ -342,6 +342,19 @@ function renderCalendar() {
   }
 }
 
+function renderStorageState() {
+  const label = $('#storageMode');
+  const hint = $('#storageModeHint');
+  if (!label || !hint) return;
+  if (state.localMode) {
+    label.textContent = 'Локальный режим';
+    hint.textContent = 'Данные сохраняются только в этом браузере. Общий сервер подключим позже.';
+  } else {
+    label.textContent = 'Общий режим';
+    hint.textContent = 'Данные синхронизируются между участниками.';
+  }
+}
+
 function openDay(date) {
   state.selectedDate = date;
   const availability = state.availability[date];
@@ -391,7 +404,7 @@ async function setSlotResponse(slotId, status) {
 }
 
 function renderSlotFilters() {
-  const values = ['Все', ...new Set(state.slots.map(slot => slot.production))];
+  const values = ['Все', 'Мои', ...new Set(state.slots.map(slot => slot.production))];
   $('#slotFilters').innerHTML = values.map(value => `<button class="filter ${state.slotFilter === value ? 'active' : ''}" data-slot-filter="${value}">${value}</button>`).join('');
   $$('[data-slot-filter]').forEach(button => {
     button.onclick = () => {
@@ -405,9 +418,9 @@ function renderSlots() {
   if (!$('#slotList')) return;
   renderSlotFilters();
   const slots = state.slots
-    .filter(slot => state.slotFilter === 'Все' || slot.production === state.slotFilter)
+    .filter(slot => state.slotFilter === 'Все' || (state.slotFilter === 'Мои' ? slotParticipants(slot).some(profile => profile.id === state.firebaseUser?.uid) : slot.production === state.slotFilter))
     .sort((left, right) => `${left.date}${left.from}`.localeCompare(`${right.date}${right.from}`));
-  $('#slotBadge').textContent = state.slots.length;
+  updateSlotBadge();
   $('#slotList').innerHTML = slots.length ? slots.map(slot => {
     const participants = slotParticipants(slot);
     const responses = state.responses.filter(response => response.slotId === slot.id && participants.some(profile => profile.id === response.userId));
@@ -415,13 +428,18 @@ function renderSlots() {
     const free = responses.filter(response => response.status === 'free').length;
     const possible = responses.filter(response => response.status === 'limited').length;
     const action = state.adminView
-      ? `<div class="slot-admin-summary"><strong>${free + possible}/${participants.length}</strong><span>${free} могут · ${possible} возможно</span><button class="small-action" data-delete-slot="${slot.id}">Удалить</button></div>`
+      ? `<div class="slot-admin-summary"><strong>${free + possible}/${participants.length}</strong><span>${free} могут · ${possible} возможно</span><button class="small-action" data-edit-slot="${slot.id}">Изменить</button><button class="small-action" data-delete-slot="${slot.id}">Удалить</button></div>`
       : `<div class="slot-actions"><div class="response-buttons"><button data-slot="${slot.id}" data-response="free" class="${ownAnswer === 'free' ? 'chosen' : ''}" title="Могу">✓</button><button data-slot="${slot.id}" data-response="limited" class="${ownAnswer === 'limited' ? 'chosen' : ''}" title="Возможно">~</button><button data-slot="${slot.id}" data-response="busy" class="${ownAnswer === 'busy' ? 'chosen' : ''}" title="Не могу">×</button></div><div class="response-legend">могу · возможно · не могу</div></div>`;
-    return `<article class="slot-card"><div class="slot-when"><strong>${slot.from}</strong><span>${niceDate(slot.date)}<br>до ${slot.to}</span></div><div class="slot-info"><h3>${slot.title}</h3><p>${slot.place}</p><span class="slot-production">${slot.production}</span></div>${action}</article>`;
+    const dayStatus = state.availability[slot.date]?.status;
+    const dayHint = dayStatus === 'busy' ? '<span class="slot-warning">В календаре отмечено: не могу</span>' : dayStatus === 'limited' ? '<span class="slot-warning">В календаре есть ограничения</span>' : '';
+    return `<article class="slot-card"><div class="slot-when"><strong>${slot.from}</strong><span>${niceDate(slot.date)}<br>до ${slot.to}</span></div><div class="slot-info"><h3>${slot.title}</h3><p>${slot.place}</p><span class="slot-production">${slot.production}</span>${dayHint}</div>${action}</article>`;
   }).join('') : '<div class="empty-state">Слотов пока нет. Администратор может создать первый.</div>';
 
   $$('[data-slot][data-response]').forEach(button => {
     button.onclick = () => setSlotResponse(button.dataset.slot, button.dataset.response);
+  });
+  $$('[data-edit-slot]').forEach(button => {
+    button.onclick = () => openSlotModal(button.dataset.editSlot);
   });
   $$('[data-delete-slot]').forEach(button => {
     button.onclick = async () => {
@@ -440,6 +458,12 @@ function renderSlots() {
       }
     };
   });
+}
+
+function updateSlotBadge() {
+  const pending = state.slots.filter(slot => slotParticipants(slot).some(profile => profile.id === state.firebaseUser?.uid) && !responseFor(slot.id, state.firebaseUser?.uid)).length;
+  $('#slotBadge').textContent = pending || state.slots.length;
+  $('#slotBadge').title = pending ? `Неотвеченных слотов: ${pending}` : 'Все слоты отвечены';
 }
 
 function renderMatches() {
@@ -527,6 +551,7 @@ function renderTeam() {
 }
 
 function renderAll() {
+  renderStorageState();
   renderCalendar();
   renderSlots();
   renderMatches();
@@ -710,12 +735,27 @@ $('#copyWeek').onclick = async () => {
 
 $('#addSlot').onclick = () => {
   if (!isAdmin()) return;
-  fillProductionSelect();
-  $('#slotDate').value = iso(dateAt(1));
-  $('#slotModal').classList.remove('hidden');
+  openSlotModal();
 };
 
+function openSlotModal(slotId = null) {
+  const slot = state.slots.find(item => item.id === slotId);
+  fillProductionSelect();
+  $('#slotModal').dataset.slotId = slotId || '';
+  $('#slotModalEyebrow').textContent = slot ? 'РЕДАКТИРОВАНИЕ СЛОТА' : 'НОВЫЙ СЛОТ';
+  $('#slotModalTitle').textContent = slot ? 'Изменить время' : 'Предложить время';
+  $('#saveSlot').textContent = slot ? 'Сохранить слот' : 'Создать слот';
+  $('#slotTitle').value = slot?.title || '';
+  $('#slotProduction').value = slot?.production || shows[0]?.name || 'Общее';
+  $('#slotDate').value = slot?.date || iso(dateAt(1));
+  $('#slotFrom').value = slot?.from || '18:00';
+  $('#slotTo').value = slot?.to || '21:00';
+  $('#slotPlace').value = slot?.place || '';
+  $('#slotModal').classList.remove('hidden');
+}
+
 $('#saveSlot').onclick = async () => {
+  const existingId = $('#slotModal').dataset.slotId;
   const title = $('#slotTitle').value.trim();
   const date = $('#slotDate').value;
   if (!title || !date) {
@@ -734,15 +774,17 @@ $('#saveSlot').onclick = async () => {
       createdAt: serverTimestamp()
     };
     if (state.localMode) {
-      state.slots.push({ ...slotData, id: `local-${Date.now()}`, createdAt: null });
+      if (existingId) state.slots = state.slots.map(slot => slot.id === existingId ? { ...slot, ...slotData, createdAt: null } : slot);
+      else state.slots.push({ ...slotData, id: `local-${Date.now()}`, createdAt: null });
       persistLocalFallback();
       renderAll();
     } else {
-      await addDoc(collection(db, 'slots'), slotData);
+      if (existingId) await setDoc(doc(db, 'slots', existingId), slotData, { merge: true });
+      else await addDoc(collection(db, 'slots'), slotData);
     }
     $('#slotModal').classList.add('hidden');
     $('#slotTitle').value = '';
-    toast('Слот создан');
+    toast(existingId ? 'Слот обновлён' : 'Слот создан');
   } catch (error) {
     toast(readableError(error));
   }

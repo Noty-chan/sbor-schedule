@@ -85,7 +85,7 @@
         <div class="legend">
           <span><i class="dot green"></i>Свободен</span><span><i class="dot yellow"></i>С ограничениями</span><span><i class="dot red"></i>Не могу</span><span><i class="dot gray"></i>Не отмечено</span>
         </div>
-        <div class="quick-hint"><strong>Быстрый режим включён</strong><span>Каждое нажатие меняет цвет по кругу</span></div>
+        <div class="quick-hint"><strong id="storageMode">Быстрый режим включён</strong><span id="storageModeHint">Каждое нажатие меняет цвет по кругу</span></div>
         <div id="calendar" class="calendar compact-calendar"></div>
 
         <section class="upcoming">
@@ -136,7 +136,7 @@
   <div id="slotModal" class="modal-backdrop hidden">
     <div class="modal">
       <button class="modal-close" data-close-slot>×</button>
-      <p class="eyebrow dark">НОВЫЙ СЛОТ</p><h2>Предложить время</h2>
+      <p class="eyebrow dark" id="slotModalEyebrow">НОВЫЙ СЛОТ</p><h2 id="slotModalTitle">Предложить время</h2>
       <div class="slot-form">
         <label>Название<input id="slotTitle" type="text" placeholder="Репетиция второго акта"></label>
         <label>Спектакль<select id="slotProduction"><option>Чайка</option><option>Гроза</option><option>Три сестры</option><option>Общее</option></select></label>
