@@ -54,9 +54,9 @@
     <aside class="sidebar">
       <div class="brand"><span>С</span> СБОР</div>
       <nav>
-        <button class="nav-link active" data-page="schedule"><span class="nav-icon">⌑</span> Доступность</button>
-        <button class="nav-link" data-page="slots"><span class="nav-icon">◴</span> Слоты <b id="slotBadge">4</b></button>
-        <button class="nav-link" data-page="matches"><span class="nav-icon">⌁</span> Пересечения</button>
+        <button class="nav-link active member-only" data-page="schedule"><span class="nav-icon">⌑</span> Доступность</button>
+        <button class="nav-link" data-page="slots"><span class="nav-icon">◴</span> <span class="member-slot-label">Слоты</span><span class="admin-slot-label">Сетка недели</span> <b id="slotBadge">4</b></button>
+        <button class="nav-link admin-only" data-page="matches"><span class="nav-icon">⌁</span> Ответы участников</button>
         <button class="nav-link" data-page="shows"><span class="nav-icon">◇</span> Спектакли</button>
         <button class="nav-link" data-page="team"><span class="nav-icon">◎</span> Участники</button>
       </nav>
@@ -95,13 +95,23 @@
       </section>
 
       <section id="slotsPage" class="page">
-        <div class="intro-row"><div><p class="eyebrow dark">КОНКРЕТНОЕ ВРЕМЯ</p><h1>Слоты</h1><p class="subtitle">Ответьте по каждому времени отдельно — так администратор сразу увидит реальное пересечение.</p></div><button id="addSlot" class="primary admin-only">+ Создать слот</button></div>
+        <div class="intro-row member-only"><div><p class="eyebrow dark">КОНКРЕТНОЕ ВРЕМЯ</p><h1>Слоты</h1><p class="subtitle">Ответьте по каждому времени отдельно — так администратор сразу увидит реальное пересечение.</p></div></div>
+        <section id="weekBuilder" class="week-builder admin-only">
+          <div class="builder-heading"><div><p class="eyebrow dark">БЫСТРОЕ РАСПИСАНИЕ</p><h1>Сетка недели</h1><p class="subtitle">Выберите день и время, затем тапните нужный пресет.</p></div><button id="addSlot" class="secondary">+ Разовый слот</button></div>
+          <div class="week-switcher"><button id="previousWeek" class="icon-button">←</button><strong id="builderWeekLabel"></strong><button id="nextWeek" class="icon-button">→</button></div>
+          <div id="builderDays" class="builder-days"></div>
+          <div class="builder-time-row"><label>Следующий слот с <input id="builderTime" type="time" value="14:00"></label><span>После добавления время сдвинется автоматически</span></div>
+          <div class="preset-heading"><h2>Пресеты</h2><button id="addPreset" class="text-button">+ Новый пресет</button></div>
+          <div id="presetShelf" class="preset-shelf"></div>
+          <div class="day-schedule-heading"><h2 id="builderDayTitle">Расписание дня</h2><span id="builderDayCount"></span></div>
+          <div id="builderDaySchedule" class="builder-day-schedule"></div>
+        </section>
         <div id="slotFilters" class="filters"></div>
         <div id="slotList" class="slot-list"></div>
       </section>
 
       <section id="matchesPage" class="page">
-        <div class="intro-row"><div><p class="eyebrow dark">ОБЩЕЕ ОКНО</p><h1>Пересечения</h1><p class="subtitle">Готовность всей команды по предложенным слотам — от лучших вариантов к сложным.</p></div></div>
+        <div class="intro-row"><div><p class="eyebrow dark">ГОТОВНОСТЬ СОСТАВОВ</p><h1>Ответы участников</h1><p class="subtitle">По каждому блоку видно, кто может, кто сомневается и кто ещё не ответил.</p></div></div>
         <div id="matchSummary" class="match-summary"></div>
         <div id="matchList" class="match-list"></div>
       </section>
@@ -172,6 +182,23 @@
         <label>Время<input id="showTime" type="time" value="19:00"></label>
       </div>
       <button id="saveShow" class="primary wide">Создать спектакль</button>
+    </div>
+  </div>
+
+  <div id="presetModal" class="modal-backdrop hidden">
+    <div class="modal preset-modal">
+      <button class="modal-close" data-close-preset>×</button>
+      <p class="eyebrow dark">ПРЕСЕТ</p>
+      <h2 id="presetModalTitle">Новый пресет</h2>
+      <div class="slot-form">
+        <label>Название<input id="presetName" type="text" placeholder="Репетиция медуз"></label>
+        <div class="time-fields"><label>Длительность<select id="presetDuration"><option value="15">15 минут</option><option value="30">30 минут</option><option value="45">45 минут</option><option value="60" selected>1 час</option><option value="90">1,5 часа</option><option value="120">2 часа</option></select></label><label>Место<input id="presetPlace" type="text" placeholder="Зал"></label></div>
+        <label>Связать со спектаклем<select id="presetProduction"></select></label>
+      </div>
+      <div class="preset-people-heading"><strong>Участники</strong><span id="presetPeopleCount">0 выбрано</span></div>
+      <div id="presetPeople" class="preset-people"></div>
+      <button id="savePreset" class="primary wide">Сохранить пресет</button>
+      <button id="deletePreset" class="secondary wide danger-button hidden">Удалить пресет</button>
     </div>
   </div>
 

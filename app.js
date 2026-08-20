@@ -40,13 +40,29 @@ let shows = [
 function fallbackProfiles(user) {
   const defaultProfiles = [
     { id: user.uid, name: user.displayName || user.email.split('@')[0], email: user.email, role: user.uid === BOOTSTRAP_ADMIN_UID ? 'admin' : 'member', shows: ['Чайка', 'Гроза'] },
-    { id: 'demo-mikhail', name: 'Михаил Волков', role: 'member', shows: ['Чайка', 'Три сестры'] },
-    { id: 'demo-irina', name: 'Ирина Крылова', role: 'member', shows: ['Чайка'] },
-    { id: 'demo-denis', name: 'Денис Петров', role: 'member', shows: ['Гроза'] },
-    { id: 'demo-olga', name: 'Ольга Левина', role: 'member', shows: ['Чайка', 'Три сестры'] }
+    ...[
+      ['bogdan', 'Богдан'], ['vanya', 'Ваня'], ['ksusha-h', 'Ксюша Х.'], ['kirill', 'Кирилл'],
+      ['nikita-k', 'Никита К.'], ['danya-ml', 'Даня мл.'], ['murat', 'Мурат'], ['pasha', 'Паша'],
+      ['ulyana', 'Ульяна'], ['ksusha-l', 'Ксюша Л.'], ['taya', 'Тая'], ['arina', 'Арина'],
+      ['alyona', 'Алёна'], ['masha', 'Маша'], ['ruslan', 'Руслан'], ['rita', 'Рита'],
+      ['vitalya', 'Виталя'], ['svyat', 'Свят'], ['miya', 'Мия']
+    ].map(([id, name]) => ({ id: `demo-${id}`, name, role: 'member', shows: [] }))
   ];
   const savedProfiles = JSON.parse(localStorage.getItem('sbor-profiles-v3') || '[]');
   return defaultProfiles.map(profile => ({ ...profile, ...(savedProfiles.find(saved => saved.id === profile.id) || {}) }));
+}
+
+function defaultPresets() {
+  return [
+    { id: 'preset-individuals', name: 'Все с индивидуалками', duration: 60, place: 'Зал', production: 'Общее', participantIds: ['demo-kirill', 'demo-ulyana', 'demo-vanya', 'demo-ksusha-h'] },
+    { id: 'preset-shakespeare', name: 'Репетиция Шекспира', duration: 60, place: 'Большой зал', production: 'Общее', participantIds: ['demo-kirill', 'demo-ulyana', 'demo-pasha', 'demo-rita'] },
+    { id: 'preset-medusas', name: 'Репетиция медуз', duration: 60, place: 'Зал', production: 'Общее', participantIds: ['demo-taya', 'demo-arina', 'demo-alyona'] },
+    { id: 'preset-speech', name: 'Сценическая речь', duration: 60, place: 'Зал', production: 'Общее', participantIds: [] },
+    { id: 'preset-theatre', name: 'Театральная мастерская', duration: 90, place: 'Зал', production: 'Общее', participantIds: [] },
+    { id: 'preset-psychology', name: 'Психологическая мастерская', duration: 90, place: 'Зал', production: 'Общее', participantIds: [] },
+    { id: 'preset-vanya-bogdan', name: 'Богдан и Ваня', duration: 30, place: 'Зал', production: 'Общее', participantIds: ['demo-bogdan', 'demo-vanya'] },
+    { id: 'preset-taya-arina-alyona', name: 'Тая, Арина, Алёна', duration: 30, place: 'Зал', production: 'Общее', participantIds: ['demo-taya', 'demo-arina', 'demo-alyona'] }
+  ];
 }
 
 function fallbackSlots() {
@@ -65,11 +81,14 @@ const state = {
   availability: {},
   slots: [],
   responses: [],
+  presets: defaultPresets(),
   adminView: false,
   selectedDate: null,
   selectedStatus: null,
   filter: 'Все',
   slotFilter: 'Все',
+  builderWeekOffset: 0,
+  builderDate: null,
   localMode: false,
   unsubscribers: []
 };
@@ -183,6 +202,7 @@ function loadLocalFallback(user) {
   ];
   const savedShows = JSON.parse(localStorage.getItem('sbor-shows-v3') || 'null');
   if (Array.isArray(savedShows) && savedShows.length) shows = savedShows;
+  state.presets = JSON.parse(localStorage.getItem('sbor-presets-v1') || 'null') || defaultPresets();
 }
 
 function persistLocalFallback() {
@@ -191,6 +211,7 @@ function persistLocalFallback() {
   localStorage.setItem('sbor-responses-v3', JSON.stringify(state.responses));
   localStorage.setItem('sbor-profiles-v3', JSON.stringify(state.profiles));
   localStorage.setItem('sbor-shows-v3', JSON.stringify(shows));
+  localStorage.setItem('sbor-presets-v1', JSON.stringify(state.presets));
 }
 
 async function ensureProfile(user) {
@@ -242,6 +263,7 @@ function subscribeToData() {
     renderCalendar();
     renderSlots();
     renderMatches();
+    renderWeekBuilder();
   }, error => toast(readableError(error))));
 
   state.unsubscribers.push(onSnapshot(collection(db, 'responses'), snapshot => {
@@ -269,10 +291,21 @@ function applyUser() {
   $('#profileName').textContent = name;
   $('#profileRole').textContent = isAdmin() ? 'Администратор' : 'Участник';
   $('#avatar').textContent = name.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase();
-  $('#adminToggle').classList.toggle('hidden', !isAdmin());
-  if (!isAdmin()) {
+  const admin = isAdmin();
+  $('#app').classList.toggle('admin-account', admin);
+  $('#adminToggle').classList.toggle('hidden', !admin);
+  if (admin) {
+    state.adminView = true;
+    $('#app').classList.add('admin-mode');
+    if ($('#schedulePage').classList.contains('active')) {
+      $$('.page').forEach(page => page.classList.remove('active'));
+      $('#slotsPage').classList.add('active');
+      $$('.nav-link').forEach(link => link.classList.toggle('active', link.dataset.page === 'slots'));
+      $('#pageTitle').textContent = 'Сетка недели';
+    }
+  } else {
     state.adminView = false;
-    $('#app').classList.remove('admin-mode');
+    $('#app').classList.remove('admin-mode', 'admin-account');
   }
 }
 
@@ -374,8 +407,147 @@ function responseFor(slotId, userId) {
 }
 
 function slotParticipants(slot) {
+  if (Array.isArray(slot.participantIds)) return state.profiles.filter(profile => !profile.disabled && slot.participantIds.includes(profile.id));
   if (slot.production === 'Общее') return state.profiles.filter(profile => !profile.disabled);
   return state.profiles.filter(profile => !profile.disabled && (profile.shows || []).includes(slot.production));
+}
+
+function builderWeekStart() {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 1 + state.builderWeekOffset * 7);
+  return date;
+}
+
+function builderWeekDates() {
+  const start = builderWeekStart();
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+}
+
+function addMinutes(time, minutes) {
+  const [hours, mins] = time.split(':').map(Number);
+  const total = hours * 60 + mins + Number(minutes);
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function currentBuilderWeekKeys() {
+  return builderWeekDates().map(date => iso(date));
+}
+
+async function createSlotFromPreset(preset) {
+  if (!state.builderDate) state.builderDate = iso(builderWeekDates()[0]);
+  const from = $('#builderTime').value || '14:00';
+  const slotData = {
+    title: preset.name,
+    production: preset.production || 'Общее',
+    date: state.builderDate,
+    from,
+    to: addMinutes(from, preset.duration || 60),
+    place: preset.place || 'Место уточняется',
+    participantIds: preset.participantIds || [],
+    presetId: preset.id,
+    createdBy: state.firebaseUser.uid,
+    createdAt: serverTimestamp()
+  };
+  try {
+    if (state.localMode) {
+      state.slots.push({ ...slotData, id: `local-${Date.now()}`, createdAt: null });
+      persistLocalFallback();
+      renderAll();
+    } else {
+      await addDoc(collection(db, 'slots'), slotData);
+    }
+    $('#builderTime').value = slotData.to;
+    toast(`${preset.name} добавлен на ${from}`);
+  } catch (error) {
+    toast(readableError(error));
+  }
+}
+
+function renderWeekBuilder() {
+  if (!isAdmin() || !$('#weekBuilder')) return;
+  const dates = builderWeekDates();
+  if (!state.builderDate || !dates.some(date => iso(date) === state.builderDate)) state.builderDate = iso(dates[0]);
+  $('#builderWeekLabel').textContent = `${fmt(dates[0])} — ${fmt(dates[6])}`;
+  $('#builderDays').innerHTML = dates.map(date => {
+    const key = iso(date);
+    const count = state.slots.filter(slot => slot.date === key).length;
+    return `<button class="builder-day ${state.builderDate === key ? 'active' : ''}" data-builder-date="${key}"><span>${ruDays[date.getDay()]}</span><strong>${date.getDate()}</strong><b>${count ? `${count} блок.` : 'пусто'}</b></button>`;
+  }).join('');
+  $$('[data-builder-date]').forEach(button => {
+    button.onclick = () => {
+      state.builderDate = button.dataset.builderDate;
+      renderWeekBuilder();
+    };
+  });
+
+  const weekKeys = currentBuilderWeekKeys();
+  const usedIds = new Set(state.slots.filter(slot => weekKeys.includes(slot.date)).map(slot => slot.presetId).filter(Boolean));
+  const unused = state.presets.filter(preset => !usedIds.has(preset.id));
+  const used = state.presets.filter(preset => usedIds.has(preset.id));
+  const presetCard = preset => `<article class="preset-card ${usedIds.has(preset.id) ? 'used' : ''}" data-use-preset="${preset.id}"><button class="preset-edit" data-edit-preset="${preset.id}" aria-label="Редактировать ${preset.name}">✎</button><strong>${preset.name}</strong><span>${preset.duration} мин · ${(preset.participantIds || []).length} чел.</span><span>${preset.place || 'Место не задано'}</span></article>`;
+  $('#presetShelf').innerHTML = `${unused.map(presetCard).join('')}${used.length ? `<div class="preset-divider">Уже использованы на этой неделе</div>${used.map(presetCard).join('')}` : ''}`;
+  $$('[data-use-preset]').forEach(card => {
+    card.onclick = event => {
+      if (!event.target.closest('[data-edit-preset]')) createSlotFromPreset(state.presets.find(preset => preset.id === card.dataset.usePreset));
+    };
+  });
+  $$('[data-edit-preset]').forEach(button => {
+    button.onclick = event => {
+      event.stopPropagation();
+      openPresetModal(button.dataset.editPreset);
+    };
+  });
+
+  const selectedDate = new Date(`${state.builderDate}T12:00:00`);
+  const daySlots = state.slots.filter(slot => slot.date === state.builderDate).sort((a, b) => a.from.localeCompare(b.from));
+  $('#builderDayTitle').textContent = `${ruDays[selectedDate.getDay()]}, ${fmt(selectedDate)}`;
+  $('#builderDayCount').textContent = `${daySlots.length} блоков`;
+  $('#builderDaySchedule').innerHTML = daySlots.length ? daySlots.map(slot => `<article class="builder-slot"><strong>${slot.from}</strong><div class="builder-slot-info"><strong>${slot.title}</strong><span>${slot.to} · ${slotParticipants(slot).map(profile => profile.name).join(', ') || 'без участников'}</span></div><div class="builder-slot-actions"><button data-builder-edit="${slot.id}">изменить</button><button data-builder-delete="${slot.id}">убрать</button></div></article>`).join('') : '<div class="empty-state">Тапните пресет — блок сразу появится здесь.</div>';
+  $$('[data-builder-edit]').forEach(button => button.onclick = () => openSlotModal(button.dataset.builderEdit));
+  $$('[data-builder-delete]').forEach(button => button.onclick = () => deleteSlotById(button.dataset.builderDelete));
+}
+
+function renderPresetPeopleCount() {
+  const count = $('#presetPeople').querySelectorAll('input:checked').length;
+  $('#presetPeopleCount').textContent = `${count} выбрано`;
+}
+
+function openPresetModal(presetId = null) {
+  const preset = state.presets.find(item => item.id === presetId);
+  $('#presetModal').dataset.presetId = presetId || '';
+  $('#presetModalTitle').textContent = preset ? 'Изменить пресет' : 'Новый пресет';
+  $('#presetName').value = preset?.name || '';
+  $('#presetDuration').value = String(preset?.duration || 60);
+  $('#presetPlace').value = preset?.place || '';
+  $('#presetProduction').innerHTML = ['Общее', ...shows.map(show => show.name)].map(name => `<option>${name}</option>`).join('');
+  $('#presetProduction').value = preset?.production || 'Общее';
+  $('#presetPeople').innerHTML = state.profiles.filter(profile => profile.role !== 'admin' && !profile.disabled).map(profile => `<label><input type="checkbox" value="${profile.id}" ${(preset?.participantIds || []).includes(profile.id) ? 'checked' : ''}> ${profile.name}</label>`).join('');
+  $('#presetPeople').querySelectorAll('input').forEach(input => input.onchange = renderPresetPeopleCount);
+  $('#deletePreset').classList.toggle('hidden', !preset);
+  renderPresetPeopleCount();
+  $('#presetModal').classList.remove('hidden');
+}
+
+async function deleteSlotById(slotId) {
+  try {
+    if (state.localMode) {
+      state.slots = state.slots.filter(slot => slot.id !== slotId);
+      state.responses = state.responses.filter(response => response.slotId !== slotId);
+      persistLocalFallback();
+      renderAll();
+    } else {
+      await deleteDoc(doc(db, 'slots', slotId));
+    }
+    toast('Блок убран из расписания');
+  } catch (error) {
+    toast(readableError(error));
+  }
 }
 
 async function setSlotResponse(slotId, status) {
@@ -442,21 +614,7 @@ function renderSlots() {
     button.onclick = () => openSlotModal(button.dataset.editSlot);
   });
   $$('[data-delete-slot]').forEach(button => {
-    button.onclick = async () => {
-      try {
-        if (state.localMode) {
-          state.slots = state.slots.filter(slot => slot.id !== button.dataset.deleteSlot);
-          state.responses = state.responses.filter(response => response.slotId !== button.dataset.deleteSlot);
-          persistLocalFallback();
-          renderAll();
-        } else {
-          await deleteDoc(doc(db, 'slots', button.dataset.deleteSlot));
-        }
-        toast('Слот удалён');
-      } catch (error) {
-        toast(readableError(error));
-      }
-    };
+    button.onclick = () => deleteSlotById(button.dataset.deleteSlot);
   });
 }
 
@@ -558,6 +716,7 @@ function renderAll() {
   renderEvents();
   renderShows();
   renderTeam();
+  renderWeekBuilder();
   const now = new Date();
   $('#todayLabel').textContent = `${ruDays[now.getDay()]}, ${fmt(now)}`;
 }
@@ -639,7 +798,7 @@ $$('.nav-link').forEach(button => {
     button.classList.add('active');
     $$('.page').forEach(page => page.classList.remove('active'));
     $(`#${button.dataset.page}Page`).classList.add('active');
-    $('#pageTitle').textContent = { schedule: 'Доступность', slots: 'Слоты', matches: 'Пересечения', shows: 'Спектакли', team: 'Участники' }[button.dataset.page];
+    $('#pageTitle').textContent = { schedule: 'Доступность', slots: isAdmin() ? 'Сетка недели' : 'Слоты', matches: 'Ответы участников', shows: 'Спектакли', team: 'Участники' }[button.dataset.page];
     $('.sidebar').classList.remove('open');
   };
 });
@@ -649,6 +808,57 @@ $$('[data-go]').forEach(button => {
 });
 
 $('#mobileMenu').onclick = () => $('.sidebar').classList.toggle('open');
+
+$('#previousWeek').onclick = () => {
+  state.builderWeekOffset -= 1;
+  state.builderDate = null;
+  renderWeekBuilder();
+};
+
+$('#nextWeek').onclick = () => {
+  state.builderWeekOffset += 1;
+  state.builderDate = null;
+  renderWeekBuilder();
+};
+
+$('#addPreset').onclick = () => openPresetModal();
+
+$('#savePreset').onclick = () => {
+  const presetId = $('#presetModal').dataset.presetId;
+  const name = $('#presetName').value.trim();
+  if (!name) {
+    toast('Введите название пресета');
+    return;
+  }
+  const presetData = {
+    name,
+    duration: Number($('#presetDuration').value),
+    place: $('#presetPlace').value.trim() || 'Место уточняется',
+    production: $('#presetProduction').value,
+    participantIds: [...$('#presetPeople').querySelectorAll('input:checked')].map(input => input.value)
+  };
+  if (presetId) state.presets = state.presets.map(preset => preset.id === presetId ? { ...preset, ...presetData } : preset);
+  else state.presets.push({ id: `preset-${Date.now()}`, ...presetData });
+  persistLocalFallback();
+  $('#presetModal').classList.add('hidden');
+  renderWeekBuilder();
+  toast(presetId ? 'Пресет обновлён' : 'Пресет создан');
+};
+
+$('#deletePreset').onclick = () => {
+  const presetId = $('#presetModal').dataset.presetId;
+  if (!presetId) return;
+  state.presets = state.presets.filter(preset => preset.id !== presetId);
+  persistLocalFallback();
+  $('#presetModal').classList.add('hidden');
+  renderWeekBuilder();
+  toast('Пресет удалён. Уже созданные блоки остались в расписании');
+};
+
+$$('[data-close-preset]').forEach(button => button.onclick = () => $('#presetModal').classList.add('hidden'));
+$('#presetModal').onclick = event => {
+  if (event.target.id === 'presetModal') event.currentTarget.classList.add('hidden');
+};
 
 $('#adminToggle').onclick = () => {
   if (!isAdmin()) return;
