@@ -31,12 +31,16 @@ const BOOTSTRAP_ADMIN_UID = 'gABqRTDUcDRd4VH0lxswMIJw7B83';
 
 const ruDays = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const ruMonths = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-let shows = [
+const defaultShows = [
+  { id: 'show-seagull', name: 'Чайка', dateOffset: 2, time: '19:00', place: 'Большая сцена', cast: ['АС', 'МВ', 'ИК', 'ОЛ', '+4'], conflict: 1 },
+  { id: 'show-storm', name: 'Гроза', dateOffset: 6, time: '18:30', place: 'Камерная сцена', cast: ['ДП', 'АС', 'ЕН', '+3'], conflict: 0 },
+  { id: 'show-three-sisters', name: 'Три сестры', dateOffset: 10, time: '19:00', place: 'Большая сцена', cast: ['КС', 'МВ', 'ОЛ', '+6'], conflict: 2 },
   { id: 'show-maiden-death', name: 'Дева и Смерть', dateOffset: 2, time: '19:00', place: 'Место уточняется', cast: ['Р', 'НК'], conflict: 0 },
   { id: 'show-sunday', name: 'Воскресенье', dateOffset: 6, time: '19:00', place: 'Место уточняется', cast: ['Р', 'В'], conflict: 0 },
   { id: 'show-shakespeare-storm', name: 'Шекспир «Гроза»', dateOffset: 10, time: '19:00', place: 'Место уточняется', cast: ['С', 'НК'], conflict: 0 },
   { id: 'show-medusas', name: 'Медузы', dateOffset: 14, time: '19:00', place: 'Место уточняется', cast: ['М', 'Д', 'П', 'Д', 'В'], conflict: 0 }
 ];
+let shows = [...defaultShows];
 
 function fallbackProfiles(user) {
   const defaultProfiles = [
@@ -46,7 +50,7 @@ function fallbackProfiles(user) {
       ['nikita-k', 'Никита К.'], ['danya-ml', 'Даня мл.'], ['murat', 'Мурат'], ['pasha', 'Паша'],
       ['ulyana', 'Ульяна'], ['ksusha-l', 'Ксюша Л.'], ['taya', 'Тая'], ['arina', 'Арина'],
       ['alyona', 'Алёна'], ['masha', 'Маша'], ['ruslan', 'Руслан'], ['rita', 'Рита'],
-      ['vitalya', 'Виталя'], ['svyat', 'Свят'], ['miya', 'Мия']
+      ['vitalya', 'Виталя'], ['svyat', 'Свят'], ['miya', 'Мия'], ['mila', 'Мила'], ['darya', 'Даря']
     ].map(([id, name]) => ({ id: `demo-${id}`, name, role: 'member', shows: [] }))
   ];
   const savedProfiles = JSON.parse(localStorage.getItem('sbor-profiles-v3') || '[]');
@@ -56,10 +60,10 @@ function fallbackProfiles(user) {
 function defaultPresets() {
   return [
     { id: 'preset-individuals', name: 'Все с индивидуалками', duration: 60, place: 'Зал', production: 'Общее', participantIds: ['demo-kirill', 'demo-ulyana', 'demo-vanya', 'demo-ksusha-h'] },
-    { id: 'preset-shakespeare', name: 'Репетиция Шекспира', duration: 60, place: 'Большой зал', production: 'Шекспир «Гроза»', participantIds: ['draft-svyat', 'draft-nikita-k'] },
-    { id: 'preset-medusas', name: 'Репетиция медуз', duration: 60, place: 'Зал', production: 'Медузы', participantIds: ['draft-mila', 'draft-danya', 'draft-pasha', 'draft-darya', 'draft-vitalya'] },
-    { id: 'preset-maiden-death', name: 'Репетиция «Дева и Смерть»', duration: 60, place: 'Зал', production: 'Дева и Смерть', participantIds: ['draft-rita', 'draft-nikita-k'] },
-    { id: 'preset-sunday', name: 'Репетиция «Воскресенье»', duration: 60, place: 'Зал', production: 'Воскресенье', participantIds: ['draft-rita', 'draft-vitalya'] },
+    { id: 'preset-shakespeare', name: 'Репетиция Шекспира', duration: 60, place: 'Большой зал', production: 'Шекспир «Гроза»', participantIds: ['demo-svyat', 'demo-nikita-k'] },
+    { id: 'preset-medusas', name: 'Репетиция медуз', duration: 60, place: 'Зал', production: 'Медузы', participantIds: ['demo-mila', 'demo-danya-ml', 'demo-pasha', 'demo-darya', 'demo-vitalya'] },
+    { id: 'preset-maiden-death', name: 'Репетиция «Дева и Смерть»', duration: 60, place: 'Зал', production: 'Дева и Смерть', participantIds: ['demo-rita', 'demo-nikita-k'] },
+    { id: 'preset-sunday', name: 'Репетиция «Воскресенье»', duration: 60, place: 'Зал', production: 'Воскресенье', participantIds: ['demo-rita', 'demo-vitalya'] },
     { id: 'preset-speech', name: 'Сценическая речь', duration: 60, place: 'Зал', production: 'Общее', participantIds: [] },
     { id: 'preset-theatre', name: 'Театральная мастерская', duration: 90, place: 'Зал', production: 'Общее', participantIds: [] },
     { id: 'preset-psychology', name: 'Психологическая мастерская', duration: 90, place: 'Зал', production: 'Общее', participantIds: [] },
@@ -69,14 +73,14 @@ function defaultPresets() {
 }
 
 const draftParticipants = [
-  { id: 'draft-rita', name: 'Рита', shows: ['Дева и Смерть', 'Воскресенье'] },
-  { id: 'draft-nikita-k', name: 'Никита К.', shows: ['Дева и Смерть', 'Шекспир «Гроза»'] },
-  { id: 'draft-vitalya', name: 'Виталя', shows: ['Воскресенье', 'Медузы'] },
-  { id: 'draft-svyat', name: 'Свят', shows: ['Шекспир «Гроза»'] },
-  { id: 'draft-mila', name: 'Мила', shows: ['Медузы'] },
-  { id: 'draft-danya', name: 'Даня', shows: ['Медузы'] },
-  { id: 'draft-pasha', name: 'Паша', shows: ['Медузы'] },
-  { id: 'draft-darya', name: 'Даря', shows: ['Медузы'] }
+  ['bogdan', 'Богдан'], ['vanya', 'Ваня'], ['ksusha-h', 'Ксюша Х.'], ['kirill', 'Кирилл'], ['nikita-k', 'Никита К.'], ['danya-ml', 'Даня мл.'], ['murat', 'Мурат'], ['pasha', 'Паша'], ['ulyana', 'Ульяна'], ['ksusha-l', 'Ксюша Л.'], ['taya', 'Тая'], ['arina', 'Арина'], ['alyona', 'Алёна'], ['masha', 'Маша'], ['ruslan', 'Руслан'], ['rita', 'Рита'], ['vitalya', 'Виталя'], ['svyat', 'Свят'], ['miya', 'Мия'], ['mila', 'Мила'], ['darya', 'Даря']
+].map(([id, name]) => ({
+  id: `demo-${id}`,
+  name,
+  shows: {
+    'rita': ['Дева и Смерть', 'Воскресенье'], 'nikita-k': ['Дева и Смерть', 'Шекспир «Гроза»'], 'vitalya': ['Воскресенье', 'Медузы'], 'svyat': ['Шекспир «Гроза»'], 'mila': ['Медузы'], 'danya-ml': ['Медузы'], 'pasha': ['Медузы'], 'darya': ['Медузы']
+  }[id] || []
+}));
 ];
 
 function fallbackSlots() {
@@ -357,8 +361,7 @@ function subscribeToData() {
       state.seedingPresets = true;
       try {
         const localPresets = JSON.parse(localStorage.getItem('sbor-presets-v1') || 'null') || defaultPresets();
-        const legacyDraftIds = { 'demo-rita': 'draft-rita', 'demo-nikita-k': 'draft-nikita-k', 'demo-vitalya': 'draft-vitalya', 'demo-svyat': 'draft-svyat', 'demo-pasha': 'draft-pasha', 'demo-danya-ml': 'draft-danya' };
-        await seedCloudCollection('presets', localPresets.map(preset => ({ ...preset, participantIds: (preset.participantIds || []).map(id => legacyDraftIds[id] || id).filter(id => !id.startsWith('demo-')) })));
+        await seedCloudCollection('presets', localPresets);
       } catch (error) {
         state.seedingPresets = false;
         toast(readableError(error));
@@ -370,10 +373,14 @@ function subscribeToData() {
   }, error => toast(readableError(error))));
 
   state.unsubscribers.push(onSnapshot(collection(db, 'shows'), async snapshot => {
-    if (snapshot.empty && isAdmin() && !state.seedingShows) {
+    const cloudShows = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+    const missingShows = defaultShows.filter(defaultShow => !cloudShows.some(show => show.name === defaultShow.name));
+    if (isAdmin() && missingShows.length && !state.seedingShows) {
       state.seedingShows = true;
       try {
-        await seedCloudCollection('shows', shows);
+        const savedShows = JSON.parse(localStorage.getItem('sbor-shows-v3') || 'null') || [];
+        const customShows = snapshot.empty ? savedShows.filter(savedShow => !defaultShows.some(defaultShow => defaultShow.name === savedShow.name)) : [];
+        await seedCloudCollection('shows', [...customShows, ...missingShows]);
       } catch (error) {
         state.seedingShows = false;
         toast(readableError(error));
