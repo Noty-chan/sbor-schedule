@@ -35,6 +35,7 @@
           <label>Почта<input id="loginEmail" type="email" autocomplete="email" placeholder="name@example.com"></label>
           <label>Пароль<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Не менее 8 символов"></label>
           <button id="loginButton" class="primary wide">Войти</button>
+          <button id="resetPasswordButton" class="text-button">Восстановить пароль</button>
         </div>
         <div id="registerForm" class="auth-form hidden">
           <h2>Создать аккаунт</h2>
@@ -144,6 +145,33 @@
         <label>Место<input id="slotPlace" type="text" placeholder="Репетиционный зал"></label>
       </div>
       <button id="saveSlot" class="primary wide">Создать слот</button>
+    </div>
+  </div>
+
+  <div id="userModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <button class="modal-close" data-close-user>×</button>
+      <p class="eyebrow dark">УПРАВЛЕНИЕ УЧАСТНИКОМ</p>
+      <h2 id="userModalName">Участник</h2>
+      <p id="userModalEmail" class="modal-subtitle"></p>
+      <div id="userShowsEditor" class="user-shows-editor"></div>
+      <button id="saveUserShows" class="primary wide">Сохранить составы</button>
+      <button id="toggleUserAccess" class="secondary wide danger-button"></button>
+    </div>
+  </div>
+
+  <div id="showModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <button class="modal-close" data-close-show>×</button>
+      <p class="eyebrow dark">ПОСТАНОВКА</p>
+      <h2 id="showModalTitle">Новый спектакль</h2>
+      <div class="slot-form">
+        <label>Название<input id="showName" type="text" placeholder="Например, Вишнёвый сад"></label>
+        <label>Площадка<input id="showPlace" type="text" placeholder="Большая сцена"></label>
+        <label>Ближайший показ<input id="showDate" type="date"></label>
+        <label>Время<input id="showTime" type="time" value="19:00"></label>
+      </div>
+      <button id="saveShow" class="primary wide">Создать спектакль</button>
     </div>
   </div>
 

@@ -3,6 +3,7 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   updateProfile
@@ -30,20 +31,22 @@ const BOOTSTRAP_ADMIN_UID = 'gABqRTDUcDRd4VH0lxswMIJw7B83';
 
 const ruDays = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const ruMonths = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-const shows = [
+let shows = [
   { name: 'Чайка', dateOffset: 2, time: '19:00', place: 'Большая сцена', cast: ['АС', 'МВ', 'ИК', 'ОЛ', '+4'], conflict: 1 },
   { name: 'Гроза', dateOffset: 6, time: '18:30', place: 'Камерная сцена', cast: ['ДП', 'АС', 'ЕН', '+3'], conflict: 0 },
   { name: 'Три сестры', dateOffset: 10, time: '19:00', place: 'Большая сцена', cast: ['КС', 'МВ', 'ОЛ', '+6'], conflict: 2 }
 ];
 
 function fallbackProfiles(user) {
-  return [
+  const defaultProfiles = [
     { id: user.uid, name: user.displayName || user.email.split('@')[0], email: user.email, role: user.uid === BOOTSTRAP_ADMIN_UID ? 'admin' : 'member', shows: ['Чайка', 'Гроза'] },
     { id: 'demo-mikhail', name: 'Михаил Волков', role: 'member', shows: ['Чайка', 'Три сестры'] },
     { id: 'demo-irina', name: 'Ирина Крылова', role: 'member', shows: ['Чайка'] },
     { id: 'demo-denis', name: 'Денис Петров', role: 'member', shows: ['Гроза'] },
     { id: 'demo-olga', name: 'Ольга Левина', role: 'member', shows: ['Чайка', 'Три сестры'] }
   ];
+  const savedProfiles = JSON.parse(localStorage.getItem('sbor-profiles-v3') || '[]');
+  return defaultProfiles.map(profile => ({ ...profile, ...(savedProfiles.find(saved => saved.id === profile.id) || {}) }));
 }
 
 function fallbackSlots() {
@@ -125,6 +128,37 @@ function isAdmin() {
   return state.profile?.role === 'admin';
 }
 
+function profileById(userId) {
+  return state.profiles.find(profile => profile.id === userId);
+}
+
+async function saveManagedProfile(userId, changes) {
+  const profile = profileById(userId);
+  if (!profile || !isAdmin()) return;
+  if (state.localMode) {
+    state.profiles = state.profiles.map(item => item.id === userId ? { ...item, ...changes } : item);
+    if (state.profile?.id === userId) state.profile = { ...state.profile, ...changes };
+    persistLocalFallback();
+    applyUser();
+    renderTeam();
+    renderMatches();
+    return;
+  }
+  await setDoc(doc(db, 'profiles', userId), changes, { merge: true });
+}
+
+function openUserModal(userId) {
+  const profile = profileById(userId);
+  if (!profile || !isAdmin()) return;
+  $('#userModal').dataset.userId = userId;
+  $('#userModalName').textContent = profile.name;
+  $('#userModalEmail').textContent = profile.email || 'Почта скрыта или ещё не указана';
+  $('#userShowsEditor').innerHTML = shows.map(show => `<label><input type="checkbox" value="${show.name}" ${(profile.shows || []).includes(show.name) ? 'checked' : ''}> ${show.name}</label>`).join('');
+  $('#toggleUserAccess').textContent = profile.disabled ? 'Вернуть доступ' : 'Отключить доступ к сайту';
+  $('#toggleUserAccess').dataset.disabled = String(Boolean(profile.disabled));
+  $('#userModal').classList.remove('hidden');
+}
+
 function clearSubscriptions() {
   state.unsubscribers.forEach(unsubscribe => unsubscribe());
   state.unsubscribers = [];
@@ -147,12 +181,16 @@ function loadLocalFallback(user) {
     { id: 's4_denis', slotId: 's4', userId: 'demo-denis', name: 'Денис Петров', status: 'free' },
     { id: 's4_olga', slotId: 's4', userId: 'demo-olga', name: 'Ольга Левина', status: 'free' }
   ];
+  const savedShows = JSON.parse(localStorage.getItem('sbor-shows-v3') || 'null');
+  if (Array.isArray(savedShows) && savedShows.length) shows = savedShows;
 }
 
 function persistLocalFallback() {
   localStorage.setItem('sbor-availability', JSON.stringify(state.availability));
   localStorage.setItem('sbor-slots-v2', JSON.stringify(state.slots));
   localStorage.setItem('sbor-responses-v3', JSON.stringify(state.responses));
+  localStorage.setItem('sbor-profiles-v3', JSON.stringify(state.profiles));
+  localStorage.setItem('sbor-shows-v3', JSON.stringify(shows));
 }
 
 async function ensureProfile(user) {
@@ -180,6 +218,11 @@ function subscribeToData() {
     state.profiles = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
     const ownProfile = state.profiles.find(profile => profile.id === uid);
     if (ownProfile) state.profile = ownProfile;
+    if (state.profile?.disabled) {
+      toast('Доступ к сайту отключён администратором');
+      signOut(auth);
+      return;
+    }
     applyUser();
     renderTeam();
     renderMatches();
@@ -317,6 +360,11 @@ function responseFor(slotId, userId) {
   return state.responses.find(response => response.slotId === slotId && response.userId === userId);
 }
 
+function slotParticipants(slot) {
+  if (slot.production === 'Общее') return state.profiles.filter(profile => !profile.disabled);
+  return state.profiles.filter(profile => !profile.disabled && (profile.shows || []).includes(slot.production));
+}
+
 async function setSlotResponse(slotId, status) {
   const id = `${slotId}_${state.firebaseUser.uid}`;
   if (state.localMode) {
@@ -361,12 +409,13 @@ function renderSlots() {
     .sort((left, right) => `${left.date}${left.from}`.localeCompare(`${right.date}${right.from}`));
   $('#slotBadge').textContent = state.slots.length;
   $('#slotList').innerHTML = slots.length ? slots.map(slot => {
-    const responses = state.responses.filter(response => response.slotId === slot.id);
+    const participants = slotParticipants(slot);
+    const responses = state.responses.filter(response => response.slotId === slot.id && participants.some(profile => profile.id === response.userId));
     const ownAnswer = responseFor(slot.id, state.firebaseUser?.uid)?.status || 'none';
     const free = responses.filter(response => response.status === 'free').length;
     const possible = responses.filter(response => response.status === 'limited').length;
     const action = state.adminView
-      ? `<div class="slot-admin-summary"><strong>${free + possible}/${state.profiles.length}</strong><span>${free} могут · ${possible} возможно</span><button class="small-action" data-delete-slot="${slot.id}">Удалить</button></div>`
+      ? `<div class="slot-admin-summary"><strong>${free + possible}/${participants.length}</strong><span>${free} могут · ${possible} возможно</span><button class="small-action" data-delete-slot="${slot.id}">Удалить</button></div>`
       : `<div class="slot-actions"><div class="response-buttons"><button data-slot="${slot.id}" data-response="free" class="${ownAnswer === 'free' ? 'chosen' : ''}" title="Могу">✓</button><button data-slot="${slot.id}" data-response="limited" class="${ownAnswer === 'limited' ? 'chosen' : ''}" title="Возможно">~</button><button data-slot="${slot.id}" data-response="busy" class="${ownAnswer === 'busy' ? 'chosen' : ''}" title="Не могу">×</button></div><div class="response-legend">могу · возможно · не могу</div></div>`;
     return `<article class="slot-card"><div class="slot-when"><strong>${slot.from}</strong><span>${niceDate(slot.date)}<br>до ${slot.to}</span></div><div class="slot-info"><h3>${slot.title}</h3><p>${slot.place}</p><span class="slot-production">${slot.production}</span></div>${action}</article>`;
   }).join('') : '<div class="empty-state">Слотов пока нет. Администратор может создать первый.</div>';
@@ -395,11 +444,12 @@ function renderSlots() {
 
 function renderMatches() {
   if (!$('#matchList')) return;
-  const participantCount = state.profiles.length;
   const ranked = state.slots.map(slot => {
-    const responses = state.responses.filter(response => response.slotId === slot.id);
+    const participants = slotParticipants(slot);
+    const responses = state.responses.filter(response => response.slotId === slot.id && participants.some(profile => profile.id === response.userId));
     return {
       slot,
+      participants,
       responses,
       free: responses.filter(response => response.status === 'free').length,
       limited: responses.filter(response => response.status === 'limited').length,
@@ -407,11 +457,11 @@ function renderMatches() {
     };
   }).sort((left, right) => (right.free + right.limited * 0.5) - (left.free + left.limited * 0.5));
   const best = ranked[0];
-  const full = ranked.filter(item => item.busy === 0 && item.responses.length === participantCount && participantCount > 0).length;
+  const full = ranked.filter(item => item.busy === 0 && item.responses.length === item.participants.length && item.participants.length > 0).length;
   const answerCount = ranked.reduce((sum, item) => sum + item.responses.length, 0);
-  const total = Math.max(1, ranked.length * participantCount);
-  $('#matchSummary').innerHTML = `<div class="summary-card"><strong>${best ? best.free + best.limited : 0}/${participantCount}</strong><span>лучшее пересечение</span></div><div class="summary-card"><strong>${full}</strong><span>слотов без отказов</span></div><div class="summary-card"><strong>${Math.round(answerCount / total * 100)}%</strong><span>ответов собрано</span></div>`;
-  $('#matchList').innerHTML = ranked.length ? ranked.map(({ slot, responses, free, limited }) => `<article class="match-card"><div class="match-head"><div><h3>${slot.title}</h3><p>${niceDate(slot.date)} · ${slot.from}–${slot.to} · ${slot.production}</p></div><div class="match-score"><strong>${free + limited}/${participantCount}</strong><span>доступны</span></div></div><div class="member-responses">${state.profiles.map(profile => {
+  const total = Math.max(1, ranked.reduce((sum, item) => sum + item.participants.length, 0));
+  $('#matchSummary').innerHTML = `<div class="summary-card"><strong>${best ? best.free + best.limited : 0}/${best?.participants.length || 0}</strong><span>лучшее пересечение</span></div><div class="summary-card"><strong>${full}</strong><span>слотов без отказов</span></div><div class="summary-card"><strong>${Math.round(answerCount / total * 100)}%</strong><span>ответов собрано</span></div>`;
+  $('#matchList').innerHTML = ranked.length ? ranked.map(({ slot, participants, responses, free, limited }) => `<article class="match-card"><div class="match-head"><div><h3>${slot.title}</h3><p>${niceDate(slot.date)} · ${slot.from}–${slot.to} · ${slot.production}</p></div><div class="match-score"><strong>${free + limited}/${participants.length}</strong><span>доступны</span></div></div><div class="member-responses">${participants.map(profile => {
     const status = responses.find(response => response.userId === profile.id)?.status || 'none';
     const word = { free: 'может', limited: 'возможно', busy: 'не может', none: 'нет ответа' }[status];
     return `<div class="member-chip ${status}">${profile.name.split(' ')[0]} · ${word}</div>`;
@@ -426,7 +476,33 @@ function renderEvents() {
 }
 
 function renderShows() {
-  $('#showGrid').innerHTML = shows.map((show, index) => `<article class="show-card"><span class="show-card-number">0${index + 1} / ${fmt(dateAt(show.dateOffset))}</span><h3>${show.name}</h3><p>${show.time} · ${show.place}</p><div class="cast-avatars">${show.cast.map(person => `<span>${person}</span>`).join('')}</div><div class="show-status"><span>Состав: ${show.cast.length + 3} человек</span><span class="${show.conflict ? 'warning' : ''}">${show.conflict ? `${show.conflict} не могут` : 'Все свободны'}</span></div></article>`).join('');
+  $('#showGrid').innerHTML = shows.map((show, index) => {
+    const cast = state.profiles.filter(profile => (profile.shows || []).includes(show.name));
+    const showSlots = state.slots.filter(slot => slot.production === show.name);
+    const displayDate = show.date ? niceDate(show.date) : fmt(dateAt(show.dateOffset || 0));
+    const avatars = cast.length ? cast.map(profile => profile.name.split(' ').map(part => part[0]).slice(0, 2).join('')) : show.cast || [];
+    return `<article class="show-card"><span class="show-card-number">${String(index + 1).padStart(2, '0')} / ${displayDate}</span><h3>${show.name}</h3><p>${show.time} · ${show.place}</p><div class="cast-avatars">${avatars.map(person => `<span>${person}</span>`).join('') || '<span>—</span>'}</div><div class="show-status"><span>Состав: ${cast.length || 0} человек</span><span>${showSlots.length} слотов</span></div>${state.adminView ? `<button class="small-action" data-edit-show="${show.name}">Изменить спектакль</button>` : ''}</article>`;
+  }).join('');
+  $$('[data-edit-show]').forEach(button => {
+    button.onclick = () => openShowModal(button.dataset.editShow);
+  });
+}
+
+function fillProductionSelect() {
+  const select = $('#slotProduction');
+  select.innerHTML = [...shows.map(show => show.name), 'Общее'].map(name => `<option>${name}</option>`).join('');
+}
+
+function openShowModal(showName = null) {
+  const show = shows.find(item => item.name === showName);
+  $('#showModal').dataset.showName = showName || '';
+  $('#showModalTitle').textContent = show ? 'Изменить спектакль' : 'Новый спектакль';
+  $('#saveShow').textContent = show ? 'Сохранить спектакль' : 'Создать спектакль';
+  $('#showName').value = show?.name || '';
+  $('#showPlace').value = show?.place || '';
+  $('#showDate').value = show?.date || iso(dateAt(show?.dateOffset || 7));
+  $('#showTime').value = show?.time || '19:00';
+  $('#showModal').classList.remove('hidden');
 }
 
 function renderTeam() {
@@ -442,8 +518,12 @@ function renderTeam() {
   const profiles = state.profiles.filter(profile => state.filter === 'Все' || (profile.shows || []).includes(state.filter));
   $('#teamTable').innerHTML = profiles.map(profile => {
     const initials = profile.name.split(' ').map(part => part[0]).slice(0, 2).join('');
-    return `<tr><td><div class="person"><span class="mini-avatar">${initials}</span><span><strong>${profile.name}</strong><br><small>${profile.role === 'admin' ? 'Администратор' : 'Участник'}</small></span></div></td><td>${(profile.shows || []).join(', ') || 'Пока не назначен'}</td><td><span class="gray">Данные доступны администратору</span></td><td class="admin-only"><button class="small-action">Изменить состав</button></td></tr>`;
+    const actions = state.adminView && profile.id !== state.profile?.id ? `<div class="member-actions"><button class="small-action" data-manage-user="${profile.id}">Управлять</button>${profile.disabled ? '<span class="access-status">Отключён</span>' : ''}</div>` : '';
+    return `<tr class="${profile.disabled ? 'access-disabled' : ''}"><td><div class="person"><span class="mini-avatar">${initials}</span><span><strong>${profile.name}</strong><br><small>${profile.role === 'admin' ? 'Администратор' : 'Участник'}</small></span></div></td><td>${(profile.shows || []).join(', ') || 'Пока не назначен'}</td><td><span class="gray">Данные доступны администратору</span></td><td class="admin-only">${actions}</td></tr>`;
   }).join('');
+  $$('[data-manage-user]').forEach(button => {
+    button.onclick = () => openUserModal(button.dataset.manageUser);
+  });
 }
 
 function renderAll() {
@@ -475,6 +555,20 @@ $('#loginButton').onclick = async () => {
     toast(readableError(error));
   } finally {
     setBusy(button, false);
+  }
+};
+
+$('#resetPasswordButton').onclick = async () => {
+  const email = $('#loginEmail').value.trim();
+  if (!email.includes('@')) {
+    toast('Введите почту в поле выше');
+    return;
+  }
+  try {
+    await sendPasswordResetEmail(auth, email);
+    toast('Письмо для восстановления отправлено');
+  } catch (error) {
+    toast(readableError(error));
   }
 };
 
@@ -537,6 +631,7 @@ $('#adminToggle').onclick = () => {
   $('#app').classList.toggle('admin-mode', state.adminView);
   $('#adminToggle span:last-child').innerHTML = `<small>Режим</small>${state.adminView ? 'Администратор' : 'Участник'}`;
   renderSlots();
+  renderTeam();
   toast(state.adminView ? 'Режим администратора' : 'Режим участника');
 };
 
@@ -615,6 +710,7 @@ $('#copyWeek').onclick = async () => {
 
 $('#addSlot').onclick = () => {
   if (!isAdmin()) return;
+  fillProductionSelect();
   $('#slotDate').value = iso(dateAt(1));
   $('#slotModal').classList.remove('hidden');
 };
@@ -659,7 +755,81 @@ $('#slotModal').onclick = event => {
   if (event.target.id === 'slotModal') event.currentTarget.classList.add('hidden');
 };
 
-$('#addShow').onclick = () => toast('Управление спектаклями подключим следующим этапом');
+$('#addShow').onclick = () => {
+  if (!isAdmin()) return;
+  openShowModal();
+};
+
+$('#saveShow').onclick = async () => {
+  const oldName = $('#showModal').dataset.showName;
+  const name = $('#showName').value.trim();
+  const place = $('#showPlace').value.trim();
+  const date = $('#showDate').value;
+  const time = $('#showTime').value;
+  if (!name || !place || !date || !time) {
+    toast('Заполните название, площадку, дату и время');
+    return;
+  }
+  if (!state.localMode) {
+    toast('Сохранение спектаклей станет общим после подключения сервера');
+    return;
+  }
+  const duplicate = shows.some(show => show.name === name && show.name !== oldName);
+  if (duplicate) {
+    toast('Спектакль с таким названием уже есть');
+    return;
+  }
+  const showData = { name, place, date, time, cast: [] };
+  if (oldName) {
+    shows = shows.map(show => show.name === oldName ? { ...show, ...showData } : show);
+    state.profiles = state.profiles.map(profile => ({ ...profile, shows: (profile.shows || []).map(item => item === oldName ? name : item) }));
+    state.slots = state.slots.map(slot => slot.production === oldName ? { ...slot, production: name } : slot);
+  } else {
+    shows.push(showData);
+  }
+  persistLocalFallback();
+  $('#showModal').classList.add('hidden');
+  renderAll();
+  toast(oldName ? 'Спектакль обновлён' : 'Спектакль создан');
+};
+
+$$('[data-close-show]').forEach(button => {
+  button.onclick = () => $('#showModal').classList.add('hidden');
+});
+$('#showModal').onclick = event => {
+  if (event.target.id === 'showModal') event.currentTarget.classList.add('hidden');
+};
+
+$('#saveUserShows').onclick = async () => {
+  const userId = $('#userModal').dataset.userId;
+  const showsForUser = [...$('#userShowsEditor').querySelectorAll('input:checked')].map(input => input.value);
+  try {
+    await saveManagedProfile(userId, { shows: showsForUser });
+    $('#userModal').classList.add('hidden');
+    toast('Составы участника сохранены');
+  } catch (error) {
+    toast(readableError(error));
+  }
+};
+
+$('#toggleUserAccess').onclick = async () => {
+  const userId = $('#userModal').dataset.userId;
+  const currentlyDisabled = $('#toggleUserAccess').dataset.disabled === 'true';
+  try {
+    await saveManagedProfile(userId, { disabled: !currentlyDisabled });
+    $('#userModal').classList.add('hidden');
+    toast(currentlyDisabled ? 'Доступ возвращён' : 'Доступ к сайту отключён');
+  } catch (error) {
+    toast(readableError(error));
+  }
+};
+
+$$('[data-close-user]').forEach(button => {
+  button.onclick = () => $('#userModal').classList.add('hidden');
+});
+$('#userModal').onclick = event => {
+  if (event.target.id === 'userModal') event.currentTarget.classList.add('hidden');
+};
 
 onAuthStateChanged(auth, async user => {
   clearSubscriptions();
