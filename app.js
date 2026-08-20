@@ -742,6 +742,12 @@ $('#loginButton').onclick = async () => {
   }
 };
 
+$('#loginPassword').addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || $('#loginButton').disabled) return;
+  event.preventDefault();
+  $('#loginButton').click();
+});
+
 $('#resetPasswordButton').onclick = async () => {
   const email = $('#loginEmail').value.trim();
   if (!email.includes('@')) {
@@ -787,6 +793,12 @@ $('#registerButton').onclick = async () => {
     setBusy(button, false);
   }
 };
+
+$('#registerPassword').addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || $('#registerButton').disabled) return;
+  event.preventDefault();
+  $('#registerButton').click();
+});
 
 $('#logoutButton').onclick = async () => {
   await signOut(auth);
