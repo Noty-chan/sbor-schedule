@@ -89,7 +89,6 @@ const draftParticipants = [
     'rita': ['Дева и Смерть', 'Воскресенье'], 'nikita-k': ['Дева и Смерть', 'Шекспир «Гроза»'], 'vitalya': ['Воскресенье', 'Медузы'], 'svyat': ['Шекспир «Гроза»'], 'mila': ['Медузы'], 'danya-ml': ['Медузы'], 'pasha': ['Медузы'], 'darya': ['Медузы']
   }[id] || []
 }));
-];
 
 function fallbackSlots() {
   return [
