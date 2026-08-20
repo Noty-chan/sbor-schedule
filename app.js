@@ -870,17 +870,6 @@ function renderAll() {
   $('#todayLabel').textContent = `${ruDays[now.getDay()]}, ${fmt(now)}`;
 }
 
-$$('.auth-tab').forEach(button => {
-  button.onclick = () => {
-    $$('.auth-tab').forEach(item => item.classList.remove('active'));
-    button.classList.add('active');
-    $('#loginForm').classList.toggle('hidden', button.dataset.authTab !== 'login');
-    $('#registerForm').classList.toggle('hidden', button.dataset.authTab !== 'register');
-    setAuthMessage('login');
-    setAuthMessage('register');
-  };
-});
-
 $('#loginForm').onsubmit = async event => {
   event.preventDefault();
   const button = $('#loginButton');

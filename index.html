@@ -25,9 +25,11 @@
     <section class="auth-panel">
       <div class="mobile-brand"><span>С</span> СБОР</div>
       <div class="auth-box">
+        <input id="authLoginTab" class="auth-tab-control" type="radio" name="authTab" checked>
+        <input id="authRegisterTab" class="auth-tab-control" type="radio" name="authTab">
         <div class="auth-tabs">
-          <button class="auth-tab active" data-auth-tab="login">Войти</button>
-          <button class="auth-tab" data-auth-tab="register">Регистрация</button>
+          <label class="auth-tab auth-tab-login" for="authLoginTab">Войти</label>
+          <label class="auth-tab auth-tab-register" for="authRegisterTab">Регистрация</label>
         </div>
         <form id="loginForm" class="auth-form" novalidate>
           <h2>С возвращением</h2>
@@ -38,7 +40,7 @@
           <button id="resetPasswordButton" type="button" class="text-button">Восстановить пароль</button>
           <p id="loginMessage" class="auth-message" role="alert" aria-live="polite"></p>
         </form>
-        <form id="registerForm" class="auth-form hidden" novalidate>
+        <form id="registerForm" class="auth-form" novalidate>
           <h2>Создать аккаунт</h2>
           <p>Администратор позже добавит вас в составы.</p>
           <label>Имя и фамилия<input id="registerName" type="text" autocomplete="name" placeholder="Анна Смирнова"></label>
