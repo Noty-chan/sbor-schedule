@@ -870,8 +870,7 @@ function renderAll() {
   $('#todayLabel').textContent = `${ruDays[now.getDay()]}, ${fmt(now)}`;
 }
 
-$('#loginForm').onsubmit = async event => {
-  event.preventDefault();
+$('#loginButton').onclick = async () => {
   const button = $('#loginButton');
   setAuthMessage('login');
   setBusy(button, true);
@@ -883,6 +882,12 @@ $('#loginForm').onsubmit = async event => {
     setBusy(button, false);
   }
 };
+
+$('#loginPassword').addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || $('#loginButton').disabled) return;
+  event.preventDefault();
+  $('#loginButton').click();
+});
 
 $('#resetPasswordButton').onclick = async () => {
   const email = $('#loginEmail').value.trim();
@@ -898,8 +903,7 @@ $('#resetPasswordButton').onclick = async () => {
   }
 };
 
-$('#registerForm').onsubmit = async event => {
-  event.preventDefault();
+$('#registerButton').onclick = async () => {
   const name = $('#registerName').value.trim();
   const email = $('#registerEmail').value.trim();
   const password = $('#registerPassword').value;
@@ -927,6 +931,12 @@ $('#registerForm').onsubmit = async event => {
     setBusy(button, false);
   }
 };
+
+$('#registerPassword').addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || $('#registerButton').disabled) return;
+  event.preventDefault();
+  $('#registerButton').click();
+});
 
 $('#logoutButton').onclick = async () => {
   await signOut(auth);
