@@ -142,11 +142,23 @@ function niceDate(value) {
   return `${date.getDate()} ${ruMonths[date.getMonth()]}, ${ruDays[date.getDay()]}`;
 }
 
+let toastTimer = null;
+let lastToastMessage = '';
+let lastToastAt = 0;
+
 function toast(message = 'Сохранено') {
+  const now = Date.now();
+  const isRepeatedError = message === lastToastMessage
+    && (message.includes('Firestore') || message.includes('облачн'))
+    && now - lastToastAt < 60000;
+  if (isRepeatedError) return;
+  lastToastMessage = message;
+  lastToastAt = now;
   const element = $('#toast');
   element.textContent = message;
   element.classList.add('show');
-  setTimeout(() => element.classList.remove('show'), 2200);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => element.classList.remove('show'), 2600);
 }
 
 function setBusy(button, busy) {
@@ -166,7 +178,7 @@ function readableError(error) {
     'auth/network-request-failed': 'Нет соединения с Firebase. Проверьте интернет и попробуйте ещё раз',
     'auth/unauthorized-domain': 'Этот адрес сайта ещё не разрешён в настройках Firebase',
     'auth/internal-error': 'Firebase временно не ответил. Попробуйте ещё раз',
-    'permission-denied': 'Firestore отклонил запрос. Проверьте правила доступа'
+    'permission-denied': 'Часть облачных данных временно недоступна'
   };
   return messages[error?.code] || error?.message || 'Не удалось выполнить действие';
 }
