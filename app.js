@@ -32,9 +32,9 @@ const BOOTSTRAP_ADMIN_UID = 'gABqRTDUcDRd4VH0lxswMIJw7B83';
 const ruDays = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const ruMonths = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 let shows = [
-  { name: 'Чайка', dateOffset: 2, time: '19:00', place: 'Большая сцена', cast: ['АС', 'МВ', 'ИК', 'ОЛ', '+4'], conflict: 1 },
-  { name: 'Гроза', dateOffset: 6, time: '18:30', place: 'Камерная сцена', cast: ['ДП', 'АС', 'ЕН', '+3'], conflict: 0 },
-  { name: 'Три сестры', dateOffset: 10, time: '19:00', place: 'Большая сцена', cast: ['КС', 'МВ', 'ОЛ', '+6'], conflict: 2 }
+  { id: 'show-seagull', name: 'Чайка', dateOffset: 2, time: '19:00', place: 'Большая сцена', cast: ['АС', 'МВ', 'ИК', 'ОЛ', '+4'], conflict: 1 },
+  { id: 'show-storm', name: 'Гроза', dateOffset: 6, time: '18:30', place: 'Камерная сцена', cast: ['ДП', 'АС', 'ЕН', '+3'], conflict: 0 },
+  { id: 'show-three-sisters', name: 'Три сестры', dateOffset: 10, time: '19:00', place: 'Большая сцена', cast: ['КС', 'МВ', 'ОЛ', '+6'], conflict: 2 }
 ];
 
 function fallbackProfiles(user) {
@@ -90,6 +90,9 @@ const state = {
   builderWeekOffset: 0,
   builderDate: null,
   localMode: false,
+  seedingPresets: false,
+  seedingShows: false,
+  cloudMigrationStarted: false,
   unsubscribers: []
 };
 
@@ -144,7 +147,7 @@ function currentName() {
 }
 
 function isAdmin() {
-  return state.profile?.role === 'admin';
+  return state.firebaseUser?.uid === BOOTSTRAP_ADMIN_UID || state.profile?.role === 'admin';
 }
 
 function profileById(userId) {
@@ -226,9 +229,52 @@ async function ensureProfile(user) {
       createdAt: serverTimestamp()
     };
     await setDoc(profileRef, profile);
+    if (user.uid === BOOTSTRAP_ADMIN_UID) {
+      await setDoc(profileRef, { role: 'admin' }, { merge: true });
+      profile.role = 'admin';
+    }
     return { id: user.uid, ...profile, createdAt: null };
   }
-  return { id: profileSnapshot.id, ...profileSnapshot.data() };
+  const profile = { id: profileSnapshot.id, ...profileSnapshot.data() };
+  if (user.uid === BOOTSTRAP_ADMIN_UID && profile.role !== 'admin') {
+    await setDoc(profileRef, { role: 'admin' }, { merge: true });
+    profile.role = 'admin';
+  }
+  return profile;
+}
+
+async function seedCloudCollection(name, items) {
+  if (!items.length) return;
+  const batch = writeBatch(db);
+  items.forEach((item, index) => {
+    const id = item.id || `${name.slice(0, -1)}-${Date.now()}-${index}`;
+    batch.set(doc(db, name, id), { ...item, id });
+  });
+  await batch.commit();
+}
+
+async function migrateLocalAdminData() {
+  if (!isAdmin() || state.cloudMigrationStarted || localStorage.getItem('sbor-cloud-migrated-v1')) return;
+  state.cloudMigrationStarted = true;
+  const localSlots = (JSON.parse(localStorage.getItem('sbor-slots-v2') || '[]') || []).filter(slot => String(slot.id).startsWith('local-'));
+  const localResponses = JSON.parse(localStorage.getItem('sbor-responses-v3') || '[]') || [];
+  const localAvailability = JSON.parse(localStorage.getItem('sbor-availability') || '{}') || {};
+  const batch = writeBatch(db);
+  let writeCount = 0;
+  localSlots.forEach(slot => {
+    batch.set(doc(db, 'slots', slot.id), { ...slot, createdBy: state.firebaseUser.uid, createdAt: serverTimestamp() }, { merge: true });
+    writeCount += 1;
+  });
+  localResponses.filter(response => response.userId === state.firebaseUser.uid && localSlots.some(slot => slot.id === response.slotId)).forEach(response => {
+    batch.set(doc(db, 'responses', response.id), { ...response, updatedAt: serverTimestamp() }, { merge: true });
+    writeCount += 1;
+  });
+  Object.entries(localAvailability).forEach(([date, value]) => {
+    batch.set(doc(db, 'availability', `${state.firebaseUser.uid}_${date}`), { userId: state.firebaseUser.uid, date, status: value.status, from: value.from || null, to: value.to || null, updatedAt: serverTimestamp() }, { merge: true });
+    writeCount += 1;
+  });
+  if (writeCount) await batch.commit();
+  localStorage.setItem('sbor-cloud-migrated-v1', new Date().toISOString());
 }
 
 function subscribeToData() {
@@ -271,6 +317,43 @@ function subscribeToData() {
     renderSlots();
     renderMatches();
   }, error => toast(readableError(error))));
+
+  state.unsubscribers.push(onSnapshot(collection(db, 'presets'), async snapshot => {
+    if (snapshot.empty && isAdmin() && !state.seedingPresets) {
+      state.seedingPresets = true;
+      try {
+        const localPresets = JSON.parse(localStorage.getItem('sbor-presets-v1') || 'null') || defaultPresets();
+        await seedCloudCollection('presets', localPresets.map(preset => ({ ...preset, participantIds: [] })));
+      } catch (error) {
+        state.seedingPresets = false;
+        toast(readableError(error));
+      }
+      return;
+    }
+    state.presets = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+    renderWeekBuilder();
+  }, error => toast(readableError(error))));
+
+  state.unsubscribers.push(onSnapshot(collection(db, 'shows'), async snapshot => {
+    if (snapshot.empty && isAdmin() && !state.seedingShows) {
+      state.seedingShows = true;
+      try {
+        const localShows = JSON.parse(localStorage.getItem('sbor-shows-v3') || 'null') || shows;
+        await seedCloudCollection('shows', localShows);
+      } catch (error) {
+        state.seedingShows = false;
+        toast(readableError(error));
+      }
+      return;
+    }
+    shows = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+    renderEvents();
+    renderShows();
+    renderTeam();
+    renderWeekBuilder();
+  }, error => toast(readableError(error))));
+
+  migrateLocalAdminData().catch(error => toast(readableError(error)));
 }
 
 function showApp() {
@@ -845,7 +928,7 @@ $('#nextWeek').onclick = () => {
 
 $('#addPreset').onclick = () => openPresetModal();
 
-$('#savePreset').onclick = () => {
+$('#savePreset').onclick = async () => {
   const presetId = $('#presetModal').dataset.presetId;
   const name = $('#presetName').value.trim();
   if (!name) {
@@ -859,22 +942,39 @@ $('#savePreset').onclick = () => {
     production: $('#presetProduction').value,
     participantIds: [...$('#presetPeople').querySelectorAll('input:checked')].map(input => input.value)
   };
-  if (presetId) state.presets = state.presets.map(preset => preset.id === presetId ? { ...preset, ...presetData } : preset);
-  else state.presets.push({ id: `preset-${Date.now()}`, ...presetData });
-  persistLocalFallback();
-  $('#presetModal').classList.add('hidden');
-  renderWeekBuilder();
-  toast(presetId ? 'Пресет обновлён' : 'Пресет создан');
+  try {
+    const id = presetId || `preset-${Date.now()}`;
+    if (state.localMode) {
+      if (presetId) state.presets = state.presets.map(preset => preset.id === presetId ? { ...preset, ...presetData } : preset);
+      else state.presets.push({ id, ...presetData });
+      persistLocalFallback();
+      renderWeekBuilder();
+    } else {
+      await setDoc(doc(db, 'presets', id), { id, ...presetData }, { merge: true });
+    }
+    $('#presetModal').classList.add('hidden');
+    toast(presetId ? 'Пресет обновлён' : 'Пресет создан');
+  } catch (error) {
+    toast(readableError(error));
+  }
 };
 
-$('#deletePreset').onclick = () => {
+$('#deletePreset').onclick = async () => {
   const presetId = $('#presetModal').dataset.presetId;
   if (!presetId) return;
-  state.presets = state.presets.filter(preset => preset.id !== presetId);
-  persistLocalFallback();
-  $('#presetModal').classList.add('hidden');
-  renderWeekBuilder();
-  toast('Пресет удалён. Уже созданные блоки остались в расписании');
+  try {
+    if (state.localMode) {
+      state.presets = state.presets.filter(preset => preset.id !== presetId);
+      persistLocalFallback();
+      renderWeekBuilder();
+    } else {
+      await deleteDoc(doc(db, 'presets', presetId));
+    }
+    $('#presetModal').classList.add('hidden');
+    toast('Пресет удалён. Уже созданные блоки остались в расписании');
+  } catch (error) {
+    toast(readableError(error));
+  }
 };
 
 $$('[data-close-preset]').forEach(button => button.onclick = () => $('#presetModal').classList.add('hidden'));
@@ -1070,27 +1170,39 @@ $('#saveShow').onclick = async () => {
     toast('Заполните название, площадку, дату и время');
     return;
   }
-  if (!state.localMode) {
-    toast('Сохранение спектаклей станет общим после подключения сервера');
-    return;
-  }
   const duplicate = shows.some(show => show.name === name && show.name !== oldName);
   if (duplicate) {
     toast('Спектакль с таким названием уже есть');
     return;
   }
-  const showData = { name, place, date, time, cast: [] };
-  if (oldName) {
-    shows = shows.map(show => show.name === oldName ? { ...show, ...showData } : show);
-    state.profiles = state.profiles.map(profile => ({ ...profile, shows: (profile.shows || []).map(item => item === oldName ? name : item) }));
-    state.slots = state.slots.map(slot => slot.production === oldName ? { ...slot, production: name } : slot);
-  } else {
-    shows.push(showData);
+  const existing = shows.find(show => show.name === oldName);
+  const id = existing?.id || `show-${Date.now()}`;
+  const showData = { id, name, place, date, time, cast: existing?.cast || [] };
+  try {
+    if (state.localMode) {
+      if (oldName) {
+        shows = shows.map(show => show.name === oldName ? { ...show, ...showData } : show);
+        state.profiles = state.profiles.map(profile => ({ ...profile, shows: (profile.shows || []).map(item => item === oldName ? name : item) }));
+        state.slots = state.slots.map(slot => slot.production === oldName ? { ...slot, production: name } : slot);
+      } else {
+        shows.push(showData);
+      }
+      persistLocalFallback();
+      renderAll();
+    } else {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'shows', id), showData, { merge: true });
+      if (oldName && oldName !== name) {
+        state.profiles.filter(profile => (profile.shows || []).includes(oldName)).forEach(profile => batch.set(doc(db, 'profiles', profile.id), { shows: profile.shows.map(item => item === oldName ? name : item) }, { merge: true }));
+        state.slots.filter(slot => slot.production === oldName).forEach(slot => batch.set(doc(db, 'slots', slot.id), { production: name }, { merge: true }));
+      }
+      await batch.commit();
+    }
+    $('#showModal').classList.add('hidden');
+    toast(oldName ? 'Спектакль обновлён' : 'Спектакль создан');
+  } catch (error) {
+    toast(readableError(error));
   }
-  persistLocalFallback();
-  $('#showModal').classList.add('hidden');
-  renderAll();
-  toast(oldName ? 'Спектакль обновлён' : 'Спектакль создан');
 };
 
 $$('[data-close-show]').forEach(button => {
@@ -1140,6 +1252,9 @@ onAuthStateChanged(auth, async user => {
   state.slots = [];
   state.responses = [];
   state.localMode = false;
+  state.seedingPresets = false;
+  state.seedingShows = false;
+  state.cloudMigrationStarted = false;
   if (!user) {
     showAuth();
     return;
