@@ -32,9 +32,10 @@ const BOOTSTRAP_ADMIN_UID = 'gABqRTDUcDRd4VH0lxswMIJw7B83';
 const ruDays = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const ruMonths = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 let shows = [
-  { id: 'show-seagull', name: 'Чайка', dateOffset: 2, time: '19:00', place: 'Большая сцена', cast: ['АС', 'МВ', 'ИК', 'ОЛ', '+4'], conflict: 1 },
-  { id: 'show-storm', name: 'Гроза', dateOffset: 6, time: '18:30', place: 'Камерная сцена', cast: ['ДП', 'АС', 'ЕН', '+3'], conflict: 0 },
-  { id: 'show-three-sisters', name: 'Три сестры', dateOffset: 10, time: '19:00', place: 'Большая сцена', cast: ['КС', 'МВ', 'ОЛ', '+6'], conflict: 2 }
+  { id: 'show-maiden-death', name: 'Дева и Смерть', dateOffset: 2, time: '19:00', place: 'Место уточняется', cast: ['Р', 'НК'], conflict: 0 },
+  { id: 'show-sunday', name: 'Воскресенье', dateOffset: 6, time: '19:00', place: 'Место уточняется', cast: ['Р', 'В'], conflict: 0 },
+  { id: 'show-shakespeare-storm', name: 'Шекспир «Гроза»', dateOffset: 10, time: '19:00', place: 'Место уточняется', cast: ['С', 'НК'], conflict: 0 },
+  { id: 'show-medusas', name: 'Медузы', dateOffset: 14, time: '19:00', place: 'Место уточняется', cast: ['М', 'Д', 'П', 'Д', 'В'], conflict: 0 }
 ];
 
 function fallbackProfiles(user) {
@@ -55,8 +56,10 @@ function fallbackProfiles(user) {
 function defaultPresets() {
   return [
     { id: 'preset-individuals', name: 'Все с индивидуалками', duration: 60, place: 'Зал', production: 'Общее', participantIds: ['demo-kirill', 'demo-ulyana', 'demo-vanya', 'demo-ksusha-h'] },
-    { id: 'preset-shakespeare', name: 'Репетиция Шекспира', duration: 60, place: 'Большой зал', production: 'Общее', participantIds: ['demo-kirill', 'demo-ulyana', 'demo-pasha', 'demo-rita'] },
-    { id: 'preset-medusas', name: 'Репетиция медуз', duration: 60, place: 'Зал', production: 'Общее', participantIds: ['demo-taya', 'demo-arina', 'demo-alyona'] },
+    { id: 'preset-shakespeare', name: 'Репетиция Шекспира', duration: 60, place: 'Большой зал', production: 'Шекспир «Гроза»', participantIds: ['draft-svyat', 'draft-nikita-k'] },
+    { id: 'preset-medusas', name: 'Репетиция медуз', duration: 60, place: 'Зал', production: 'Медузы', participantIds: ['draft-mila', 'draft-danya', 'draft-pasha', 'draft-darya', 'draft-vitalya'] },
+    { id: 'preset-maiden-death', name: 'Репетиция «Дева и Смерть»', duration: 60, place: 'Зал', production: 'Дева и Смерть', participantIds: ['draft-rita', 'draft-nikita-k'] },
+    { id: 'preset-sunday', name: 'Репетиция «Воскресенье»', duration: 60, place: 'Зал', production: 'Воскресенье', participantIds: ['draft-rita', 'draft-vitalya'] },
     { id: 'preset-speech', name: 'Сценическая речь', duration: 60, place: 'Зал', production: 'Общее', participantIds: [] },
     { id: 'preset-theatre', name: 'Театральная мастерская', duration: 90, place: 'Зал', production: 'Общее', participantIds: [] },
     { id: 'preset-psychology', name: 'Психологическая мастерская', duration: 90, place: 'Зал', production: 'Общее', participantIds: [] },
@@ -64,6 +67,17 @@ function defaultPresets() {
     { id: 'preset-taya-arina-alyona', name: 'Тая, Арина, Алёна', duration: 30, place: 'Зал', production: 'Общее', participantIds: ['demo-taya', 'demo-arina', 'demo-alyona'] }
   ];
 }
+
+const draftParticipants = [
+  { id: 'draft-rita', name: 'Рита', shows: ['Дева и Смерть', 'Воскресенье'] },
+  { id: 'draft-nikita-k', name: 'Никита К.', shows: ['Дева и Смерть', 'Шекспир «Гроза»'] },
+  { id: 'draft-vitalya', name: 'Виталя', shows: ['Воскресенье', 'Медузы'] },
+  { id: 'draft-svyat', name: 'Свят', shows: ['Шекспир «Гроза»'] },
+  { id: 'draft-mila', name: 'Мила', shows: ['Медузы'] },
+  { id: 'draft-danya', name: 'Даня', shows: ['Медузы'] },
+  { id: 'draft-pasha', name: 'Паша', shows: ['Медузы'] },
+  { id: 'draft-darya', name: 'Даря', shows: ['Медузы'] }
+];
 
 function fallbackSlots() {
   return [
@@ -92,6 +106,7 @@ const state = {
   localMode: false,
   seedingPresets: false,
   seedingShows: false,
+  seedingDrafts: false,
   cloudMigrationStarted: false,
   unsubscribers: []
 };
@@ -176,9 +191,27 @@ function openUserModal(userId) {
   $('#userModalName').textContent = profile.name;
   $('#userModalEmail').textContent = profile.email || 'Почта скрыта или ещё не указана';
   $('#userShowsEditor').innerHTML = shows.map(show => `<label><input type="checkbox" value="${show.name}" ${(profile.shows || []).includes(show.name) ? 'checked' : ''}> ${show.name}</label>`).join('');
+  const drafts = state.profiles.filter(item => item.pending && !item.disabled);
+  $('#linkDraftBlock').classList.toggle('hidden', profile.pending || !drafts.length);
+  $('#linkDraftSelect').innerHTML = drafts.map(item => `<option value="${item.id}">${item.name}</option>`).join('');
   $('#toggleUserAccess').textContent = profile.disabled ? 'Вернуть доступ' : 'Отключить доступ к сайту';
   $('#toggleUserAccess').dataset.disabled = String(Boolean(profile.disabled));
   $('#userModal').classList.remove('hidden');
+}
+
+async function seedDraftParticipants() {
+  if (!isAdmin() || state.seedingDrafts) return;
+  const missing = draftParticipants.filter(draft => !state.profiles.some(profile => profile.id === draft.id));
+  if (!missing.length) return;
+  state.seedingDrafts = true;
+  try {
+    const batch = writeBatch(db);
+    missing.forEach(draft => batch.set(doc(db, 'profiles', draft.id), { ...draft, role: 'member', pending: true, disabled: false }));
+    await batch.commit();
+  } catch (error) {
+    state.seedingDrafts = false;
+    toast(readableError(error));
+  }
 }
 
 function clearSubscriptions() {
@@ -291,6 +324,7 @@ function subscribeToData() {
       return;
     }
     applyUser();
+    seedDraftParticipants();
     renderTeam();
     renderMatches();
   }, error => toast(readableError(error))));
@@ -323,7 +357,8 @@ function subscribeToData() {
       state.seedingPresets = true;
       try {
         const localPresets = JSON.parse(localStorage.getItem('sbor-presets-v1') || 'null') || defaultPresets();
-        await seedCloudCollection('presets', localPresets.map(preset => ({ ...preset, participantIds: [] })));
+        const legacyDraftIds = { 'demo-rita': 'draft-rita', 'demo-nikita-k': 'draft-nikita-k', 'demo-vitalya': 'draft-vitalya', 'demo-svyat': 'draft-svyat', 'demo-pasha': 'draft-pasha', 'demo-danya-ml': 'draft-danya' };
+        await seedCloudCollection('presets', localPresets.map(preset => ({ ...preset, participantIds: (preset.participantIds || []).map(id => legacyDraftIds[id] || id).filter(id => !id.startsWith('demo-')) })));
       } catch (error) {
         state.seedingPresets = false;
         toast(readableError(error));
@@ -338,8 +373,7 @@ function subscribeToData() {
     if (snapshot.empty && isAdmin() && !state.seedingShows) {
       state.seedingShows = true;
       try {
-        const localShows = JSON.parse(localStorage.getItem('sbor-shows-v3') || 'null') || shows;
-        await seedCloudCollection('shows', localShows);
+        await seedCloudCollection('shows', shows);
       } catch (error) {
         state.seedingShows = false;
         toast(readableError(error));
@@ -790,7 +824,7 @@ function renderTeam() {
       renderTeam();
     };
   });
-  const profiles = state.profiles.filter(profile => state.filter === 'Все' || (profile.shows || []).includes(state.filter));
+  const profiles = state.profiles.filter(profile => !profile.claimedBy && (state.filter === 'Все' || (profile.shows || []).includes(state.filter)));
   $('#teamTable').innerHTML = profiles.map(profile => {
     const initials = profile.name.split(' ').map(part => part[0]).slice(0, 2).join('');
     const actions = state.adminView && profile.id !== state.profile?.id ? `<div class="member-actions"><button class="small-action" data-manage-user="${profile.id}">Управлять</button>${profile.disabled ? '<span class="access-status">Отключён</span>' : ''}</div>` : '';
@@ -1212,6 +1246,39 @@ $('#showModal').onclick = event => {
   if (event.target.id === 'showModal') event.currentTarget.classList.add('hidden');
 };
 
+$('#linkDraftProfile').onclick = async () => {
+  const userId = $('#userModal').dataset.userId;
+  const draftId = $('#linkDraftSelect').value;
+  const user = profileById(userId);
+  const draft = profileById(draftId);
+  if (!user || !draft || user.pending || !isAdmin()) return;
+  const showsForUser = [...new Set([...(user.shows || []), ...(draft.shows || [])])];
+  try {
+    if (state.localMode) {
+      state.profiles = state.profiles.map(profile => {
+        if (profile.id === userId) return { ...profile, shows: showsForUser, pending: false };
+        if (profile.id === draftId) return { ...profile, pending: false, disabled: true, claimedBy: userId };
+        return profile;
+      });
+      state.slots = state.slots.map(slot => ({ ...slot, participantIds: (slot.participantIds || []).map(id => id === draftId ? userId : id) }));
+      state.presets = state.presets.map(preset => ({ ...preset, participantIds: (preset.participantIds || []).map(id => id === draftId ? userId : id) }));
+      persistLocalFallback();
+      renderAll();
+    } else {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'profiles', userId), { shows: showsForUser, pending: false }, { merge: true });
+      state.slots.filter(slot => (slot.participantIds || []).includes(draftId)).forEach(slot => batch.set(doc(db, 'slots', slot.id), { participantIds: slot.participantIds.map(id => id === draftId ? userId : id) }, { merge: true }));
+      state.presets.filter(preset => (preset.participantIds || []).includes(draftId)).forEach(preset => batch.set(doc(db, 'presets', preset.id), { participantIds: preset.participantIds.map(id => id === draftId ? userId : id) }, { merge: true }));
+      batch.set(doc(db, 'profiles', draftId), { pending: false, disabled: true, claimedBy: userId }, { merge: true });
+      await batch.commit();
+    }
+    $('#userModal').classList.add('hidden');
+    toast(`${draft.name} связан с аккаунтом ${user.name}`);
+  } catch (error) {
+    toast(readableError(error));
+  }
+};
+
 $('#saveUserShows').onclick = async () => {
   const userId = $('#userModal').dataset.userId;
   const showsForUser = [...$('#userShowsEditor').querySelectorAll('input:checked')].map(input => input.value);
@@ -1254,6 +1321,7 @@ onAuthStateChanged(auth, async user => {
   state.localMode = false;
   state.seedingPresets = false;
   state.seedingShows = false;
+  state.seedingDrafts = false;
   state.cloudMigrationStarted = false;
   if (!user) {
     showAuth();
