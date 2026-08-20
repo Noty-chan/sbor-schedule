@@ -32,15 +32,13 @@ const BOOTSTRAP_ADMIN_UID = 'gABqRTDUcDRd4VH0lxswMIJw7B83';
 const ruDays = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const ruMonths = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const defaultShows = [
-  { id: 'show-seagull', name: 'Чайка', dateOffset: 2, time: '19:00', place: 'Большая сцена', cast: ['АС', 'МВ', 'ИК', 'ОЛ', '+4'], conflict: 1 },
-  { id: 'show-storm', name: 'Гроза', dateOffset: 6, time: '18:30', place: 'Камерная сцена', cast: ['ДП', 'АС', 'ЕН', '+3'], conflict: 0 },
-  { id: 'show-three-sisters', name: 'Три сестры', dateOffset: 10, time: '19:00', place: 'Большая сцена', cast: ['КС', 'МВ', 'ОЛ', '+6'], conflict: 2 },
   { id: 'show-maiden-death', name: 'Дева и Смерть', dateOffset: 2, time: '19:00', place: 'Место уточняется', cast: ['Р', 'НК'], conflict: 0 },
   { id: 'show-sunday', name: 'Воскресенье', dateOffset: 6, time: '19:00', place: 'Место уточняется', cast: ['Р', 'В'], conflict: 0 },
   { id: 'show-shakespeare-storm', name: 'Шекспир «Гроза»', dateOffset: 10, time: '19:00', place: 'Место уточняется', cast: ['С', 'НК'], conflict: 0 },
   { id: 'show-medusas', name: 'Медузы', dateOffset: 14, time: '19:00', place: 'Место уточняется', cast: ['М', 'Д', 'П', 'Д', 'В'], conflict: 0 }
 ];
 let shows = [...defaultShows];
+const obsoleteShowIds = new Set(['show-seagull', 'show-storm', 'show-three-sisters']);
 
 function fallbackProfiles(user) {
   const defaultProfiles = [
@@ -374,6 +372,13 @@ function subscribeToData() {
 
   state.unsubscribers.push(onSnapshot(collection(db, 'shows'), async snapshot => {
     const cloudShows = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+    const obsoleteShows = cloudShows.filter(show => obsoleteShowIds.has(show.id));
+    if (isAdmin() && obsoleteShows.length) {
+      const batch = writeBatch(db);
+      obsoleteShows.forEach(show => batch.delete(doc(db, 'shows', show.id)));
+      await batch.commit();
+      return;
+    }
     const missingShows = defaultShows.filter(defaultShow => !cloudShows.some(show => show.name === defaultShow.name));
     if (isAdmin() && missingShows.length && !state.seedingShows) {
       state.seedingShows = true;
