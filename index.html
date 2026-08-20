@@ -153,6 +153,9 @@
         <label>Дата<input id="slotDate" type="date"></label>
         <div class="time-fields"><label>С<input id="slotFrom" type="time" value="18:00"></label><label>До<input id="slotTo" type="time" value="21:00"></label></div>
         <label>Место<input id="slotPlace" type="text" placeholder="Репетиционный зал"></label>
+        <div class="preset-people-heading"><strong>Участники слота</strong><span id="slotPeopleCount">0 выбрано</span></div>
+        <div class="slot-people-actions"><button id="selectAllSlotPeople" type="button" class="small-action">Выбрать всех</button><button id="clearSlotPeople" type="button" class="small-action">Снять выбор</button></div>
+        <div id="slotPeople" class="preset-people slot-people"></div>
       </div>
       <button id="saveSlot" class="primary wide">Создать слот</button>
     </div>

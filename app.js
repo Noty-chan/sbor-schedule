@@ -408,8 +408,7 @@ function responseFor(slotId, userId) {
 
 function slotParticipants(slot) {
   if (Array.isArray(slot.participantIds)) return state.profiles.filter(profile => !profile.disabled && slot.participantIds.includes(profile.id));
-  if (slot.production === 'Общее') return state.profiles.filter(profile => !profile.disabled);
-  return state.profiles.filter(profile => !profile.disabled && (profile.shows || []).includes(slot.production));
+  return [];
 }
 
 function builderWeekStart() {
@@ -437,6 +436,13 @@ function addMinutes(time, minutes) {
 
 function currentBuilderWeekKeys() {
   return builderWeekDates().map(date => iso(date));
+}
+
+function nextBuilderTime(date) {
+  const lastSlot = state.slots
+    .filter(slot => slot.date === date && slot.to)
+    .sort((left, right) => right.to.localeCompare(left.to))[0];
+  return lastSlot?.to || '14:00';
 }
 
 async function createSlotFromPreset(preset) {
@@ -472,7 +478,10 @@ async function createSlotFromPreset(preset) {
 function renderWeekBuilder() {
   if (!isAdmin() || !$('#weekBuilder')) return;
   const dates = builderWeekDates();
-  if (!state.builderDate || !dates.some(date => iso(date) === state.builderDate)) state.builderDate = iso(dates[0]);
+  if (!state.builderDate || !dates.some(date => iso(date) === state.builderDate)) {
+    state.builderDate = iso(dates[0]);
+    $('#builderTime').value = nextBuilderTime(state.builderDate);
+  }
   $('#builderWeekLabel').textContent = `${fmt(dates[0])} — ${fmt(dates[6])}`;
   $('#builderDays').innerHTML = dates.map(date => {
     const key = iso(date);
@@ -482,6 +491,7 @@ function renderWeekBuilder() {
   $$('[data-builder-date]').forEach(button => {
     button.onclick = () => {
       state.builderDate = button.dataset.builderDate;
+      $('#builderTime').value = nextBuilderTime(state.builderDate);
       renderWeekBuilder();
     };
   });
@@ -965,16 +975,38 @@ function openSlotModal(slotId = null) {
   fillProductionSelect();
   $('#slotModal').dataset.slotId = slotId || '';
   $('#slotModalEyebrow').textContent = slot ? 'РЕДАКТИРОВАНИЕ СЛОТА' : 'НОВЫЙ СЛОТ';
-  $('#slotModalTitle').textContent = slot ? 'Изменить время' : 'Предложить время';
+  $('#slotModalTitle').textContent = slot ? 'Изменить слот' : 'Создать слот';
   $('#saveSlot').textContent = slot ? 'Сохранить слот' : 'Создать слот';
   $('#slotTitle').value = slot?.title || '';
   $('#slotProduction').value = slot?.production || shows[0]?.name || 'Общее';
-  $('#slotDate').value = slot?.date || iso(dateAt(1));
-  $('#slotFrom').value = slot?.from || '18:00';
-  $('#slotTo').value = slot?.to || '21:00';
+  $('#slotDate').value = slot?.date || state.builderDate || iso(dateAt(1));
+  $('#slotFrom').value = slot?.from || $('#builderTime').value || '14:00';
+  $('#slotTo').value = slot?.to || addMinutes($('#slotFrom').value, 60);
   $('#slotPlace').value = slot?.place || '';
+  const selectedPeople = Array.isArray(slot?.participantIds) ? slot.participantIds : [];
+  $('#slotPeople').innerHTML = state.profiles
+    .filter(profile => profile.role !== 'admin' && !profile.disabled)
+    .map(profile => `<label><input type="checkbox" value="${profile.id}" ${selectedPeople.includes(profile.id) ? 'checked' : ''}> ${profile.name}</label>`)
+    .join('');
+  $('#slotPeople').querySelectorAll('input').forEach(input => input.onchange = renderSlotPeopleCount);
+  renderSlotPeopleCount();
   $('#slotModal').classList.remove('hidden');
 }
+
+function renderSlotPeopleCount() {
+  const count = $('#slotPeople').querySelectorAll('input:checked').length;
+  $('#slotPeopleCount').textContent = `${count} выбрано`;
+}
+
+$('#selectAllSlotPeople').onclick = () => {
+  $('#slotPeople').querySelectorAll('input').forEach(input => { input.checked = true; });
+  renderSlotPeopleCount();
+};
+
+$('#clearSlotPeople').onclick = () => {
+  $('#slotPeople').querySelectorAll('input').forEach(input => { input.checked = false; });
+  renderSlotPeopleCount();
+};
 
 $('#saveSlot').onclick = async () => {
   const existingId = $('#slotModal').dataset.slotId;
@@ -992,6 +1024,7 @@ $('#saveSlot').onclick = async () => {
       from: $('#slotFrom').value,
       to: $('#slotTo').value,
       place: $('#slotPlace').value.trim() || 'Место уточняется',
+      participantIds: [...$('#slotPeople').querySelectorAll('input:checked')].map(input => input.value),
       createdBy: state.firebaseUser.uid,
       createdAt: serverTimestamp()
     };
@@ -1004,6 +1037,9 @@ $('#saveSlot').onclick = async () => {
       if (existingId) await setDoc(doc(db, 'slots', existingId), slotData, { merge: true });
       else await addDoc(collection(db, 'slots'), slotData);
     }
+    state.builderDate = date;
+    $('#builderTime').value = slotData.to;
+    renderWeekBuilder();
     $('#slotModal').classList.add('hidden');
     $('#slotTitle').value = '';
     toast(existingId ? 'Слот обновлён' : 'Слот создан');
