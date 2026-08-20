@@ -40,6 +40,16 @@ const defaultShows = [
 let shows = [...defaultShows];
 const obsoleteShowIds = new Set(['show-seagull', 'show-storm', 'show-three-sisters']);
 
+function readLocalJson(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : JSON.parse(value);
+  } catch (error) {
+    console.warn(`Повреждённые локальные данные ${key} пропущены`, error);
+    return fallback;
+  }
+}
+
 function fallbackProfiles(user) {
   const defaultProfiles = [
     { id: user.uid, name: user.displayName || user.email.split('@')[0], email: user.email, role: user.uid === BOOTSTRAP_ADMIN_UID ? 'admin' : 'member', shows: ['Чайка', 'Гроза'] },
@@ -51,7 +61,7 @@ function fallbackProfiles(user) {
       ['vitalya', 'Виталя'], ['svyat', 'Свят'], ['miya', 'Мия'], ['mila', 'Мила'], ['darya', 'Даря']
     ].map(([id, name]) => ({ id: `demo-${id}`, name, role: 'member', shows: [] }))
   ];
-  const savedProfiles = JSON.parse(localStorage.getItem('sbor-profiles-v3') || '[]');
+  const savedProfiles = readLocalJson('sbor-profiles-v3', []);
   return defaultProfiles.map(profile => ({ ...profile, ...(savedProfiles.find(saved => saved.id === profile.id) || {}) }));
 }
 
@@ -235,9 +245,9 @@ function loadLocalFallback(user) {
   state.localMode = true;
   state.profiles = fallbackProfiles(user);
   state.profile = state.profiles[0];
-  state.availability = JSON.parse(localStorage.getItem('sbor-availability') || '{}');
-  state.slots = JSON.parse(localStorage.getItem('sbor-slots-v2') || 'null') || fallbackSlots();
-  state.responses = JSON.parse(localStorage.getItem('sbor-responses-v3') || 'null') || [
+  state.availability = readLocalJson('sbor-availability', {});
+  state.slots = readLocalJson('sbor-slots-v2', null) || fallbackSlots();
+  state.responses = readLocalJson('sbor-responses-v3', null) || [
     { id: 's1_self', slotId: 's1', userId: user.uid, name: state.profile.name, status: 'free' },
     { id: 's1_mikhail', slotId: 's1', userId: 'demo-mikhail', name: 'Михаил Волков', status: 'free' },
     { id: 's1_irina', slotId: 's1', userId: 'demo-irina', name: 'Ирина Крылова', status: 'free' },
@@ -248,9 +258,9 @@ function loadLocalFallback(user) {
     { id: 's4_denis', slotId: 's4', userId: 'demo-denis', name: 'Денис Петров', status: 'free' },
     { id: 's4_olga', slotId: 's4', userId: 'demo-olga', name: 'Ольга Левина', status: 'free' }
   ];
-  const savedShows = JSON.parse(localStorage.getItem('sbor-shows-v3') || 'null');
+  const savedShows = readLocalJson('sbor-shows-v3', null);
   if (Array.isArray(savedShows) && savedShows.length) shows = savedShows;
-  state.presets = JSON.parse(localStorage.getItem('sbor-presets-v1') || 'null') || defaultPresets();
+  state.presets = readLocalJson('sbor-presets-v1', null) || defaultPresets();
 }
 
 function persistLocalFallback() {
@@ -301,9 +311,9 @@ async function seedCloudCollection(name, items) {
 async function migrateLocalAdminData() {
   if (!isAdmin() || state.cloudMigrationStarted || localStorage.getItem('sbor-cloud-migrated-v1')) return;
   state.cloudMigrationStarted = true;
-  const localSlots = (JSON.parse(localStorage.getItem('sbor-slots-v2') || '[]') || []).filter(slot => String(slot.id).startsWith('local-'));
-  const localResponses = JSON.parse(localStorage.getItem('sbor-responses-v3') || '[]') || [];
-  const localAvailability = JSON.parse(localStorage.getItem('sbor-availability') || '{}') || {};
+  const localSlots = (readLocalJson('sbor-slots-v2', []) || []).filter(slot => String(slot.id).startsWith('local-'));
+  const localResponses = readLocalJson('sbor-responses-v3', []) || [];
+  const localAvailability = readLocalJson('sbor-availability', {}) || {};
   const batch = writeBatch(db);
   let writeCount = 0;
   localSlots.forEach(slot => {
@@ -368,7 +378,7 @@ function subscribeToData() {
     if (snapshot.empty && isAdmin() && !state.seedingPresets) {
       state.seedingPresets = true;
       try {
-        const localPresets = JSON.parse(localStorage.getItem('sbor-presets-v1') || 'null') || defaultPresets();
+        const localPresets = readLocalJson('sbor-presets-v1', null) || defaultPresets();
         await seedCloudCollection('presets', localPresets);
       } catch (error) {
         state.seedingPresets = false;
@@ -393,7 +403,7 @@ function subscribeToData() {
     if (isAdmin() && missingShows.length && !state.seedingShows) {
       state.seedingShows = true;
       try {
-        const savedShows = JSON.parse(localStorage.getItem('sbor-shows-v3') || 'null') || [];
+        const savedShows = readLocalJson('sbor-shows-v3', null) || [];
         const customShows = snapshot.empty ? savedShows.filter(savedShow => !defaultShows.some(defaultShow => defaultShow.name === savedShow.name)) : [];
         await seedCloudCollection('shows', [...customShows, ...missingShows]);
       } catch (error) {
