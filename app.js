@@ -173,11 +173,16 @@ function setAuthMessage(form, message = '', success = false) {
 }
 
 function currentName() {
+  if (state.firebaseUser?.uid === BOOTSTRAP_ADMIN_UID) return 'Дашуля';
   return state.profile?.name || state.firebaseUser?.displayName || state.firebaseUser?.email || 'Участник';
 }
 
 function isAdmin() {
   return state.firebaseUser?.uid === BOOTSTRAP_ADMIN_UID || state.profile?.role === 'admin';
+}
+
+function isParticipant(profile) {
+  return profile?.role !== 'admin' && profile?.id !== BOOTSTRAP_ADMIN_UID && !profile?.claimedBy;
 }
 
 function profileById(userId) {
@@ -271,14 +276,16 @@ async function ensureProfile(user) {
     };
     await setDoc(profileRef, profile);
     if (user.uid === BOOTSTRAP_ADMIN_UID) {
-      await setDoc(profileRef, { role: 'admin' }, { merge: true });
+      await setDoc(profileRef, { name: 'Дашуля', role: 'admin' }, { merge: true });
+      profile.name = 'Дашуля';
       profile.role = 'admin';
     }
     return { id: user.uid, ...profile, createdAt: null };
   }
   const profile = { id: profileSnapshot.id, ...profileSnapshot.data() };
-  if (user.uid === BOOTSTRAP_ADMIN_UID && profile.role !== 'admin') {
-    await setDoc(profileRef, { role: 'admin' }, { merge: true });
+  if (user.uid === BOOTSTRAP_ADMIN_UID && (profile.role !== 'admin' || profile.name !== 'Дашуля')) {
+    await setDoc(profileRef, { name: 'Дашуля', role: 'admin' }, { merge: true });
+    profile.name = 'Дашуля';
     profile.role = 'admin';
   }
   return profile;
@@ -453,7 +460,8 @@ function applyUser() {
   const name = currentName();
   $('#profileName').textContent = name;
   $('#profileRole').textContent = isAdmin() ? 'Администратор' : 'Участник';
-  $('#avatar').textContent = name.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase();
+  $('#avatar').textContent = isAdmin() ? '🐱' : name.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase();
+  $('#avatar').classList.toggle('cat-avatar', isAdmin());
   const admin = isAdmin();
   $('#app').classList.toggle('admin-account', admin);
   $('#adminToggle').classList.toggle('hidden', !admin);
@@ -569,7 +577,7 @@ function responseFor(slotId, userId) {
 }
 
 function slotParticipants(slot) {
-  if (Array.isArray(slot.participantIds)) return state.profiles.filter(profile => !profile.disabled && slot.participantIds.includes(profile.id));
+  if (Array.isArray(slot.participantIds)) return state.profiles.filter(profile => isParticipant(profile) && !profile.disabled && slot.participantIds.includes(profile.id));
   return [];
 }
 
@@ -691,7 +699,7 @@ function renderPresetPeopleCount() {
 }
 
 function selectProductionCast(containerSelector, production, onChange) {
-  const castIds = new Set(state.profiles.filter(profile => (profile.shows || []).includes(production)).map(profile => profile.id));
+  const castIds = new Set(state.profiles.filter(profile => isParticipant(profile) && (profile.shows || []).includes(production)).map(profile => profile.id));
   document.querySelectorAll(`${containerSelector} input`).forEach(input => { input.checked = castIds.has(input.value); });
   onChange();
 }
@@ -844,7 +852,7 @@ function renderEvents() {
   const orderedShows = [...shows].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
   $('#eventList').innerHTML = orderedShows.map(show => {
     const date = show.date ? new Date(`${show.date}T12:00:00`) : null;
-    const cast = state.profiles.filter(profile => !profile.claimedBy && !profile.disabled && (profile.shows || []).includes(show.name));
+    const cast = state.profiles.filter(profile => isParticipant(profile) && !profile.disabled && (profile.shows || []).includes(show.name));
     const statuses = date ? cast.map(profile => state.allAvailability.find(item => item.userId === profile.id && item.date === iso(date))?.status || 'none') : [];
     const unavailable = statuses.filter(status => status === 'busy').length;
     const marked = statuses.filter(status => status !== 'none').length;
@@ -860,7 +868,7 @@ function renderEvents() {
 function renderShows() {
   const orderedShows = [...shows].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
   $('#showGrid').innerHTML = orderedShows.map((show, index) => {
-    const cast = state.profiles.filter(profile => !profile.claimedBy && !profile.disabled && (profile.shows || []).includes(show.name));
+    const cast = state.profiles.filter(profile => isParticipant(profile) && !profile.disabled && (profile.shows || []).includes(show.name));
     const showSlots = state.slots.filter(slot => slot.production === show.name);
     const displayDate = show.date ? niceDate(show.date) : 'дата не назначена';
     const avatars = cast.length ? cast.map(profile => profile.name.split(' ').map(part => part[0]).slice(0, 2).join('')) : show.cast || [];
@@ -887,7 +895,7 @@ function openShowModal(showName = null) {
   $('#showPlace').value = show?.place || '';
   $('#showDate').value = show?.date || iso(dateAt(show?.dateOffset || 7));
   $('#showTime').value = show?.time || '19:00';
-  const castIds = new Set(state.profiles.filter(profile => (profile.shows || []).includes(showName)).map(profile => profile.id));
+  const castIds = new Set(state.profiles.filter(profile => isParticipant(profile) && (profile.shows || []).includes(showName)).map(profile => profile.id));
   const availableProfiles = state.profiles.filter(profile => profile.role !== 'admin' && !profile.claimedBy && !profile.disabled);
   $('#showCastEditor').innerHTML = availableProfiles.map(profile => `<label><input type="checkbox" value="${profile.id}" ${castIds.has(profile.id) ? 'checked' : ''}> <span>${profile.name}${profile.pending ? ' · заготовка' : ''}</span></label>`).join('') || '<div class="empty-state">Сначала добавьте участников.</div>';
   $('#showCastEditor').querySelectorAll('input').forEach(input => input.onchange = renderShowCastCount);
@@ -911,7 +919,7 @@ function renderTeam() {
       renderTeam();
     };
   });
-  const profiles = state.profiles.filter(profile => !profile.claimedBy && (state.filter === 'Все' || (profile.shows || []).includes(state.filter)));
+  const profiles = state.profiles.filter(profile => isParticipant(profile) && (state.filter === 'Все' || (profile.shows || []).includes(state.filter)));
   const newProfiles = state.profiles.filter(profile => profile.email && profile.role !== 'admin' && !profile.disabled && profile.setupComplete !== true && !(profile.shows || []).length);
   $('#newAccounts').classList.toggle('hidden', !newProfiles.length);
   $('#newAccounts').innerHTML = newProfiles.length ? `<div><strong>Новые аккаунты</strong><span>${newProfiles.length} ждут настройки</span></div><div class="new-account-list">${newProfiles.map(profile => `<button data-manage-user="${profile.id}"><b>${profile.name}</b><span>Назначить составы →</span></button>`).join('')}</div>` : '';
