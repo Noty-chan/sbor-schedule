@@ -32,13 +32,13 @@ const BOOTSTRAP_ADMIN_UID = 'gABqRTDUcDRd4VH0lxswMIJw7B83';
 const ruDays = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const ruMonths = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const defaultShows = [
-  { id: 'show-maiden-death', name: 'Дева и Смерть', dateOffset: 2, time: '19:00', place: 'Место уточняется', cast: ['Р', 'НК'], conflict: 0 },
-  { id: 'show-sunday', name: 'Воскресенье', dateOffset: 6, time: '19:00', place: 'Место уточняется', cast: ['Р', 'В'], conflict: 0 },
-  { id: 'show-shakespeare-storm', name: 'Шекспир «Гроза»', dateOffset: 10, time: '19:00', place: 'Место уточняется', cast: ['С', 'НК'], conflict: 0 },
-  { id: 'show-medusas', name: 'Медузы', dateOffset: 14, time: '19:00', place: 'Место уточняется', cast: ['М', 'Д', 'П', 'Д', 'В'], conflict: 0 }
+  { id: 'show-maiden-death', name: 'Дева и Смерть', date: '', time: '', place: '', participantIds: [] },
+  { id: 'show-sunday', name: 'Воскресенье', date: '', time: '', place: '', participantIds: [] },
+  { id: 'show-shakespeare-storm', name: 'Шекспир «Гроза»', date: '', time: '', place: '', participantIds: [] },
+  { id: 'show-medusas', name: 'Медузы', date: '', time: '', place: '', participantIds: [] }
 ];
 let shows = [...defaultShows];
-const obsoleteShowIds = new Set(['show-seagull', 'show-storm', 'show-three-sisters']);
+const obsoleteShowIds = new Set(['show-seagull', 'show-three-sisters']);
 
 function readLocalJson(key, fallback) {
   try {
@@ -50,45 +50,31 @@ function readLocalJson(key, fallback) {
   }
 }
 
+function limitedRange() {
+  const saved = readLocalJson('sbor-limited-range-v1', null);
+  return saved?.from && saved?.to ? saved : { from: '18:00', to: '22:00' };
+}
+
+function rememberLimitedRange(from, to) {
+  if (!from || !to) return;
+  try {
+    localStorage.setItem('sbor-limited-range-v1', JSON.stringify({ from, to }));
+  } catch (error) {
+    console.warn('Не удалось запомнить диапазон времени', error);
+  }
+}
+
 function fallbackProfiles(user) {
-  const defaultProfiles = [
-    { id: user.uid, name: user.displayName || user.email.split('@')[0], email: user.email, role: user.uid === BOOTSTRAP_ADMIN_UID ? 'admin' : 'member', shows: [] },
-    ...[
-      ['bogdan', 'Богдан'], ['vanya', 'Ваня'], ['ksusha-h', 'Ксюша Х.'], ['kirill', 'Кирилл'],
-      ['nikita-k', 'Никита К.'], ['danya-ml', 'Даня мл.'], ['murat', 'Мурат'], ['pasha', 'Паша'],
-      ['ulyana', 'Ульяна'], ['ksusha-l', 'Ксюша Л.'], ['taya', 'Тая'], ['arina', 'Арина'],
-      ['alyona', 'Алёна'], ['masha', 'Маша'], ['ruslan', 'Руслан'], ['rita', 'Рита'],
-      ['vitalya', 'Виталя'], ['svyat', 'Свят'], ['miya', 'Мия'], ['mila', 'Мила'], ['darya', 'Даря']
-    ].map(([id, name]) => ({ id: `demo-${id}`, name, role: 'member', shows: [] }))
-  ];
+  const defaultProfiles = [{ id: user.uid, name: user.displayName || user.email.split('@')[0], email: user.email, role: user.uid === BOOTSTRAP_ADMIN_UID ? 'admin' : 'member', shows: [] }];
   const savedProfiles = readLocalJson('sbor-profiles-v3', []);
   return defaultProfiles.map(profile => ({ ...profile, ...(savedProfiles.find(saved => saved.id === profile.id) || {}) }));
 }
 
 function defaultPresets() {
-  return [
-    { id: 'preset-individuals', name: 'Все с индивидуалками', duration: 60, place: 'Зал', production: 'Общее', participantIds: ['demo-kirill', 'demo-ulyana', 'demo-vanya', 'demo-ksusha-h'] },
-    { id: 'preset-shakespeare', name: 'Репетиция Шекспира', duration: 60, place: 'Большой зал', production: 'Шекспир «Гроза»', participantIds: ['demo-svyat', 'demo-nikita-k'] },
-    { id: 'preset-medusas', name: 'Репетиция медуз', duration: 60, place: 'Зал', production: 'Медузы', participantIds: ['demo-mila', 'demo-danya-ml', 'demo-pasha', 'demo-darya', 'demo-vitalya'] },
-    { id: 'preset-maiden-death', name: 'Репетиция «Дева и Смерть»', duration: 60, place: 'Зал', production: 'Дева и Смерть', participantIds: ['demo-rita', 'demo-nikita-k'] },
-    { id: 'preset-sunday', name: 'Репетиция «Воскресенье»', duration: 60, place: 'Зал', production: 'Воскресенье', participantIds: ['demo-rita', 'demo-vitalya'] },
-    { id: 'preset-speech', name: 'Сценическая речь', duration: 60, place: 'Зал', production: 'Общее', participantIds: [] },
-    { id: 'preset-theatre', name: 'Театральная мастерская', duration: 90, place: 'Зал', production: 'Общее', participantIds: [] },
-    { id: 'preset-psychology', name: 'Психологическая мастерская', duration: 90, place: 'Зал', production: 'Общее', participantIds: [] },
-    { id: 'preset-vanya-bogdan', name: 'Богдан и Ваня', duration: 30, place: 'Зал', production: 'Общее', participantIds: ['demo-bogdan', 'demo-vanya'] },
-    { id: 'preset-taya-arina-alyona', name: 'Тая, Арина, Алёна', duration: 30, place: 'Зал', production: 'Общее', participantIds: ['demo-taya', 'demo-arina', 'demo-alyona'] }
-  ];
+  return [];
 }
 
-const draftParticipants = [
-  ['bogdan', 'Богдан'], ['vanya', 'Ваня'], ['ksusha-h', 'Ксюша Х.'], ['kirill', 'Кирилл'], ['nikita-k', 'Никита К.'], ['danya-ml', 'Даня мл.'], ['murat', 'Мурат'], ['pasha', 'Паша'], ['ulyana', 'Ульяна'], ['ksusha-l', 'Ксюша Л.'], ['taya', 'Тая'], ['arina', 'Арина'], ['alyona', 'Алёна'], ['masha', 'Маша'], ['ruslan', 'Руслан'], ['rita', 'Рита'], ['vitalya', 'Виталя'], ['svyat', 'Свят'], ['miya', 'Мия'], ['mila', 'Мила'], ['darya', 'Даря']
-].map(([id, name]) => ({
-  id: `demo-${id}`,
-  name,
-  shows: {
-    'rita': ['Дева и Смерть', 'Воскресенье'], 'nikita-k': ['Дева и Смерть', 'Шекспир «Гроза»'], 'vitalya': ['Воскресенье', 'Медузы'], 'svyat': ['Шекспир «Гроза»'], 'mila': ['Медузы'], 'danya-ml': ['Медузы'], 'pasha': ['Медузы'], 'darya': ['Медузы']
-  }[id] || []
-}));
+const draftParticipants = [];
 
 function fallbackSlots() {
   return [];
@@ -430,7 +416,7 @@ function subscribeToData() {
     renderWeekBuilder();
   }, error => toast(readableError(error))));
 
-  migrateLocalAdminData().catch(error => toast(readableError(error)));
+  // Старые локальные наброски больше не переносим в облако.
 }
 
 function showApp() {
@@ -513,7 +499,7 @@ async function cycleDay(date) {
   const next = order[(order.indexOf(current) + 1) % order.length];
   const previous = state.availability[date];
   if (!next) delete state.availability[date];
-  else state.availability[date] = { status: next, ...(next === 'limited' ? { from: '18:00', to: '22:00' } : {}) };
+  else state.availability[date] = { status: next, ...(next === 'limited' ? limitedRange() : {}) };
   renderCalendar();
   try {
     await saveAvailability(date, state.availability[date] || null);
@@ -571,10 +557,9 @@ function openDay(date) {
   $('#modalDate').textContent = niceDate(date);
   $$('[data-status]').forEach(button => button.classList.toggle('selected', button.dataset.status === state.selectedStatus));
   $('#timeFields').classList.toggle('hidden', state.selectedStatus !== 'limited');
-  if (availability?.from) {
-    $('#timeFrom').value = availability.from;
-    $('#timeTo').value = availability.to;
-  }
+  const range = availability?.from && availability?.to ? availability : limitedRange();
+  $('#timeFrom').value = range.from;
+  $('#timeTo').value = range.to;
   $('#dayModal').classList.remove('hidden');
 }
 
@@ -785,9 +770,14 @@ function renderSlotFilters() {
 function renderSlots() {
   if (!$('#slotList')) return;
   renderSlotFilters();
+  const uid = state.firebaseUser?.uid;
+  const isOwnSlot = slot => slotParticipants(slot).some(profile => profile.id === uid);
   const slots = state.slots
     .filter(slot => state.slotFilter === 'Все' || (state.slotFilter === 'Мои' ? slotParticipants(slot).some(profile => profile.id === state.firebaseUser?.uid) : slot.production === state.slotFilter))
-    .sort((left, right) => `${left.date}${left.from}`.localeCompare(`${right.date}${right.from}`));
+    .sort((left, right) => {
+      if (!state.adminView && isOwnSlot(left) !== isOwnSlot(right)) return isOwnSlot(left) ? -1 : 1;
+      return `${left.date}${left.from}`.localeCompare(`${right.date}${right.from}`);
+    });
   updateSlotBadge();
   $('#slotList').innerHTML = slots.length ? slots.map(slot => {
     const participants = slotParticipants(slot);
@@ -795,12 +785,15 @@ function renderSlots() {
     const ownAnswer = responseFor(slot.id, state.firebaseUser?.uid)?.status || 'none';
     const free = responses.filter(response => response.status === 'free').length;
     const possible = responses.filter(response => response.status === 'limited').length;
+    const ownSlot = isOwnSlot(slot);
     const action = state.adminView
       ? `<div class="slot-admin-summary"><strong>${free + possible}/${participants.length}</strong><span>${free} могут · ${possible} возможно</span><button class="small-action" data-edit-slot="${slot.id}">Изменить</button><button class="small-action" data-delete-slot="${slot.id}">Удалить</button></div>`
-      : `<div class="slot-actions"><div class="response-buttons"><button data-slot="${slot.id}" data-response="free" class="${ownAnswer === 'free' ? 'chosen' : ''}" title="Могу">✓</button><button data-slot="${slot.id}" data-response="limited" class="${ownAnswer === 'limited' ? 'chosen' : ''}" title="Возможно">~</button><button data-slot="${slot.id}" data-response="busy" class="${ownAnswer === 'busy' ? 'chosen' : ''}" title="Не могу">×</button></div><div class="response-legend">могу · возможно · не могу</div></div>`;
+      : ownSlot
+        ? `<div class="slot-actions"><div class="response-buttons"><button data-slot="${slot.id}" data-response="free" class="${ownAnswer === 'free' ? 'chosen' : ''}" title="Могу">✓</button><button data-slot="${slot.id}" data-response="limited" class="${ownAnswer === 'limited' ? 'chosen' : ''}" title="Возможно">~</button><button data-slot="${slot.id}" data-response="busy" class="${ownAnswer === 'busy' ? 'chosen' : ''}" title="Не могу">×</button></div><div class="response-legend">могу · возможно · не могу</div></div>`
+        : '<div class="slot-observer-note">Не ваш слот</div>';
     const dayStatus = state.availability[slot.date]?.status;
-    const dayHint = dayStatus === 'busy' ? '<span class="slot-warning">В календаре отмечено: не могу</span>' : dayStatus === 'limited' ? '<span class="slot-warning">В календаре есть ограничения</span>' : '';
-    return `<article class="slot-card"><div class="slot-when"><strong>${slot.from}</strong><span>${niceDate(slot.date)}<br>до ${slot.to}</span></div><div class="slot-info"><h3>${slot.title}</h3><p>${slot.place}</p><span class="slot-production">${slot.production}</span>${dayHint}</div>${action}</article>`;
+    const dayHint = ownSlot && dayStatus === 'busy' ? '<span class="slot-warning">В календаре отмечено: не могу</span>' : ownSlot && dayStatus === 'limited' ? '<span class="slot-warning">В календаре есть ограничения</span>' : '';
+    return `<article class="slot-card ${!state.adminView && !ownSlot ? 'slot-card-foreign' : ''}"><div class="slot-when"><strong>${slot.from}</strong><span>${niceDate(slot.date)}<br>до ${slot.to}</span></div><div class="slot-info"><h3>${slot.title}</h3><p>${slot.place}</p><span class="slot-production">${slot.production}</span>${dayHint}</div>${action}</article>`;
   }).join('') : '<div class="empty-state">Слотов пока нет. Администратор может создать первый.</div>';
 
   $$('[data-slot][data-response]').forEach(button => {
@@ -849,15 +842,17 @@ function renderMatches() {
 function renderEvents() {
   const orderedShows = [...shows].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
   $('#eventList').innerHTML = orderedShows.map(show => {
-    const date = show.date ? new Date(`${show.date}T12:00:00`) : dateAt(show.dateOffset || 0);
+    const date = show.date ? new Date(`${show.date}T12:00:00`) : null;
     const cast = state.profiles.filter(profile => !profile.claimedBy && !profile.disabled && (profile.shows || []).includes(show.name));
-    const statuses = cast.map(profile => state.allAvailability.find(item => item.userId === profile.id && item.date === iso(date))?.status || 'none');
+    const statuses = date ? cast.map(profile => state.allAvailability.find(item => item.userId === profile.id && item.date === iso(date))?.status || 'none') : [];
     const unavailable = statuses.filter(status => status === 'busy').length;
     const marked = statuses.filter(status => status !== 'none').length;
     const availabilityText = unavailable
       ? `<span class="warning">${unavailable} ${unavailable === 1 ? 'участник не может' : 'участника не могут'}</span>`
       : cast.length ? `${marked}/${cast.length} отметили доступность` : 'Состав не назначен';
-    return `<article class="event-card"><div class="event-date">${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}</div><div class="event-main"><strong>${show.name}</strong><span>${show.time} · ${show.place}</span></div><div class="event-meta">${availabilityText}</div></article>`;
+    const dateText = date ? `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}` : '—';
+    const details = [show.time, show.place].filter(Boolean).join(' · ') || 'Дата и место не назначены';
+    return `<article class="event-card"><div class="event-date">${dateText}</div><div class="event-main"><strong>${show.name}</strong><span>${details}</span></div><div class="event-meta">${availabilityText}</div></article>`;
   }).join('');
 }
 
@@ -866,10 +861,11 @@ function renderShows() {
   $('#showGrid').innerHTML = orderedShows.map((show, index) => {
     const cast = state.profiles.filter(profile => !profile.claimedBy && !profile.disabled && (profile.shows || []).includes(show.name));
     const showSlots = state.slots.filter(slot => slot.production === show.name);
-    const displayDate = show.date ? niceDate(show.date) : fmt(dateAt(show.dateOffset || 0));
+    const displayDate = show.date ? niceDate(show.date) : 'дата не назначена';
     const avatars = cast.length ? cast.map(profile => profile.name.split(' ').map(part => part[0]).slice(0, 2).join('')) : show.cast || [];
     const castNames = cast.map(profile => profile.name).join(', ') || 'Состав пока не назначен';
-    return `<article class="show-card"><span class="show-card-number">${String(index + 1).padStart(2, '0')} / ${displayDate}</span><h3>${show.name}</h3><p>${show.time} · ${show.place}</p><div class="cast-avatars">${avatars.slice(0, 8).map(person => `<span>${person}</span>`).join('') || '<span>—</span>'}</div><p class="show-cast-names">${castNames}</p><div class="show-status"><span>Состав: ${cast.length || 0} человек</span><span>${showSlots.length} слотов</span></div>${state.adminView ? `<button class="secondary wide show-edit-action" data-edit-show="${show.name}">Состав и настройки</button>` : ''}</article>`;
+    const details = [show.time, show.place].filter(Boolean).join(' · ') || 'Время и место не назначены';
+    return `<article class="show-card"><span class="show-card-number">${String(index + 1).padStart(2, '0')} / ${displayDate}</span><h3>${show.name}</h3><p>${details}</p><div class="cast-avatars">${avatars.slice(0, 8).map(person => `<span>${person}</span>`).join('') || '<span>—</span>'}</div><p class="show-cast-names">${castNames}</p><div class="show-status"><span>Состав: ${cast.length || 0} человек</span><span>${showSlots.length} слотов</span></div>${state.adminView ? `<button class="secondary wide show-edit-action" data-edit-show="${show.name}">Состав и настройки</button>` : ''}</article>`;
   }).join('');
   $$('[data-edit-show]').forEach(button => {
     button.onclick = () => openShowModal(button.dataset.editShow);
@@ -1144,6 +1140,7 @@ $('#saveDay').onclick = async () => {
   };
   try {
     await saveAvailability(state.selectedDate, value);
+    if (state.selectedStatus === 'limited') rememberLimitedRange(value.from, value.to);
     if (state.localMode) renderCalendar();
     $('#dayModal').classList.add('hidden');
     toast();
