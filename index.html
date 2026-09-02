@@ -66,6 +66,7 @@
       </nav>
       <div class="sidebar-bottom">
         <button id="adminToggle" class="admin-toggle"><span>↗</span><span><small>Режим</small>Участник</span></button>
+        <button id="openGuide" class="guide-link">Как пользоваться</button>
         <button id="logoutButton" class="logout">Выйти</button>
       </div>
     </aside>
@@ -215,7 +216,24 @@
     </div>
   </div>
 
+  <div id="guideModal" class="modal-backdrop hidden">
+    <div class="modal guide-modal">
+      <button class="modal-close" data-close-guide aria-label="Закрыть">×</button>
+      <p class="eyebrow dark">КОРОТКИЙ ГАЙД</p>
+      <h2>Как пользоваться «Сбором»</h2>
+      <p class="guide-lead">Отмечайте доступность на две недели и отвечайте на конкретные репетиции — этого достаточно.</p>
+      <div class="guide-steps">
+        <article><b>1</b><div><strong>Отметьте дни</strong><p>На странице «Доступность» тапайте по дню: зелёный — свободны, жёлтый — можете не всё время, красный — не можете. Карандаш задаёт точный интервал.</p></div></article>
+        <article><b>2</b><div><strong>Ответьте на слоты</strong><p>Откройте «Слоты» и у каждой назначенной вам репетиции выберите ✓ могу, ~ возможно или × не могу.</p></div></article>
+        <article><b>3</b><div><strong>Проверяйте изменения</strong><p>Администратор может менять время и состав. Заглядывайте в слоты перед репетицией; выбранный ответ подсвечивается цветом.</p></div></article>
+        <article><b>4</b><div><strong>Составы привяжет администратор</strong><p>После регистрации ничего дополнительно создавать не нужно. Даша свяжет аккаунт с вашим именем и спектаклями.</p></div></article>
+      </div>
+      <div class="guide-note"><strong>Не получается войти?</strong><span>Введите почту и нажмите «Восстановить пароль».</span></div>
+      <button id="closeGuide" class="primary wide">Понятно</button>
+    </div>
+  </div>
+
   <div id="toast" class="toast">Сохранено</div>
-  <script type="module" src="app.js?v=20260902-1"></script>
+  <script type="module" src="app.js?v=20260902-2"></script>
 </body>
 </html>

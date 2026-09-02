@@ -435,11 +435,27 @@ function showApp() {
   $('#app').classList.remove('hidden');
   applyUser();
   renderAll();
+  try {
+    if (sessionStorage.getItem('sbor-show-guide') === '1') {
+      sessionStorage.removeItem('sbor-show-guide');
+      setTimeout(openGuide, 150);
+    }
+  } catch (error) {
+    // Some private browser modes can disable session storage.
+  }
 }
 
 function showAuth() {
   $('#app').classList.add('hidden');
   $('#authScreen').classList.remove('hidden');
+}
+
+function openGuide() {
+  $('#guideModal').classList.remove('hidden');
+}
+
+function closeGuide() {
+  $('#guideModal').classList.add('hidden');
 }
 
 function applyUser() {
@@ -971,6 +987,7 @@ $('#registerButton').onclick = async () => {
   const button = $('#registerButton');
   setAuthMessage('register');
   setBusy(button, true);
+  try { sessionStorage.setItem('sbor-show-guide', '1'); } catch (error) {}
   try {
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(credential.user, { displayName: name });
@@ -984,6 +1001,9 @@ $('#registerButton').onclick = async () => {
     }, { merge: true });
     setAuthMessage('register', 'Аккаунт создан. Открываем расписание…', true);
   } catch (error) {
+    if (!auth.currentUser) {
+      try { sessionStorage.removeItem('sbor-show-guide'); } catch (storageError) {}
+    }
     setAuthMessage('register', readableError(error));
   } finally {
     setBusy(button, false);
@@ -998,6 +1018,13 @@ $('#registerPassword').addEventListener('keydown', event => {
 
 $('#logoutButton').onclick = async () => {
   await signOut(auth);
+};
+
+$('#openGuide').onclick = openGuide;
+$('#closeGuide').onclick = closeGuide;
+$$('[data-close-guide]').forEach(button => { button.onclick = closeGuide; });
+$('#guideModal').onclick = event => {
+  if (event.target.id === 'guideModal') closeGuide();
 };
 
 $$('.nav-link').forEach(button => {
