@@ -265,6 +265,7 @@ async function ensureProfile(user) {
       email: user.email,
       role: 'member',
       shows: [],
+      disabled: false,
       setupComplete: false,
       createdAt: serverTimestamp()
     };

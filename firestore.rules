@@ -19,7 +19,10 @@ service cloud.firestore {
     function isActiveUser() {
       return signedIn()
         && exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
-        && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.disabled != true;
+        && (
+          !('disabled' in get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data)
+          || get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.disabled != true
+        );
     }
 
     match /profiles/{userId} {
