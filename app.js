@@ -375,7 +375,10 @@ function subscribeToData() {
     renderWeekBuilder();
   }, error => toast(readableError(error))));
 
-  state.unsubscribers.push(onSnapshot(collection(db, 'responses'), snapshot => {
+  const responsesSource = isAdmin()
+    ? collection(db, 'responses')
+    : query(collection(db, 'responses'), where('userId', '==', uid));
+  state.unsubscribers.push(onSnapshot(responsesSource, snapshot => {
     state.responses = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
     renderSlots();
     renderMatches();
@@ -1477,6 +1480,11 @@ onAuthStateChanged(auth, async user => {
   }
   try {
     state.profile = await ensureProfile(user);
+    if (state.profile.disabled) {
+      toast('Доступ к сайту отключён администратором');
+      await signOut(auth);
+      return;
+    }
     showApp();
     subscribeToData();
   } catch (error) {

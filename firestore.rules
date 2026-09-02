@@ -16,8 +16,14 @@ service cloud.firestore {
       );
     }
 
+    function isActiveUser() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.disabled != true;
+    }
+
     match /profiles/{userId} {
-      allow read: if signedIn();
+      allow read: if isAdmin() || isActiveUser() || (signedIn() && request.auth.uid == userId);
       allow create: if isAdmin() ||
         (
           signedIn()
@@ -26,7 +32,7 @@ service cloud.firestore {
         );
       allow update: if isAdmin() ||
         (
-          signedIn()
+          isActiveUser()
           && request.auth.uid == userId
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'email'])
@@ -36,33 +42,34 @@ service cloud.firestore {
 
     match /availability/{documentId} {
       allow read: if isAdmin() ||
-        (signedIn() && resource.data.userId == request.auth.uid);
-      allow create, update: if signedIn()
+        (isActiveUser() && resource.data.userId == request.auth.uid);
+      allow create, update: if isActiveUser()
         && request.resource.data.userId == request.auth.uid;
-      allow delete: if signedIn()
-        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin() ||
+        (isActiveUser() && resource.data.userId == request.auth.uid);
     }
 
     match /slots/{slotId} {
-      allow read: if signedIn();
+      allow read: if isAdmin() || isActiveUser();
       allow create, update, delete: if isAdmin();
     }
 
     match /responses/{responseId} {
-      allow read: if signedIn();
-      allow create, update: if signedIn()
+      allow read: if isAdmin() ||
+        (isActiveUser() && resource.data.userId == request.auth.uid);
+      allow create, update: if isActiveUser()
         && request.resource.data.userId == request.auth.uid;
       allow delete: if isAdmin() ||
-        (signedIn() && resource.data.userId == request.auth.uid);
+        (isActiveUser() && resource.data.userId == request.auth.uid);
     }
 
     match /presets/{presetId} {
-      allow read: if signedIn();
+      allow read: if isAdmin() || isActiveUser();
       allow create, update, delete: if isAdmin();
     }
 
     match /shows/{showId} {
-      allow read: if signedIn();
+      allow read: if isAdmin() || isActiveUser();
       allow create, update, delete: if isAdmin();
     }
   }
