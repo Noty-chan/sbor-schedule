@@ -127,8 +127,9 @@
 
       <section id="teamPage" class="page">
         <div class="intro-row"><div><p class="eyebrow dark">ТРУППА</p><h1>Участники</h1><p class="subtitle">Фильтруйте участников по спектаклям и проверяйте доступность.</p></div></div>
+        <section id="newAccounts" class="new-accounts admin-only hidden"></section>
         <div id="filters" class="filters"></div>
-        <div class="table-wrap"><table><thead><tr><th>Участник</th><th>Спектакли</th><th>7 дней</th><th class="admin-only">Действия</th></tr></thead><tbody id="teamTable"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Участник</th><th>Спектакли</th><th>Ближайшие 14 дней</th><th class="admin-only">Действия</th></tr></thead><tbody id="teamTable"></tbody></table></div>
       </section>
     </main>
   </div>
@@ -189,7 +190,11 @@
         <label>Ближайший показ<input id="showDate" type="date"></label>
         <label>Время<input id="showTime" type="time" value="19:00"></label>
       </div>
+      <div class="preset-people-heading"><strong>Состав спектакля</strong><span id="showCastCount">0 выбрано</span></div>
+      <div class="slot-people-actions"><button id="selectAllShowCast" type="button" class="small-action">Выбрать всех</button><button id="clearShowCast" type="button" class="small-action">Снять выбор</button></div>
+      <div id="showCastEditor" class="preset-people show-cast-editor"></div>
       <button id="saveShow" class="primary wide">Создать спектакль</button>
+      <button id="deleteShow" class="secondary wide danger-button hidden">Удалить спектакль</button>
     </div>
   </div>
 
@@ -211,6 +216,6 @@
   </div>
 
   <div id="toast" class="toast">Сохранено</div>
-  <script type="module" src="app.js?v=20260820-4"></script>
+  <script type="module" src="app.js?v=20260902-1"></script>
 </body>
 </html>
