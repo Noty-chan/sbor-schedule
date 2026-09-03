@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Prata&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260903-1">
 </head>
 <body>
   <div class="grain"></div>
@@ -75,10 +75,10 @@
       <header class="topbar">
         <button id="mobileMenu" class="icon-button menu-button">☰</button>
         <div class="top-title"><p id="todayLabel"></p><h2 id="pageTitle">Моя доступность</h2></div>
-        <div class="profile">
+        <button id="openProfile" class="profile profile-button" type="button" title="Изменить никнейм">
           <div class="profile-copy"><strong id="profileName">Анна Смирнова</strong><span id="profileRole">Актриса</span></div>
           <div id="avatar" class="avatar">АС</div>
-        </div>
+        </button>
       </header>
 
       <section id="schedulePage" class="page active">
@@ -117,6 +117,7 @@
 
       <section id="matchesPage" class="page">
         <div class="intro-row"><div><p class="eyebrow dark">ГОТОВНОСТЬ СОСТАВОВ</p><h1>Ответы участников</h1><p class="subtitle">По каждому блоку видно, кто может, кто сомневается и кто ещё не ответил.</p></div></div>
+        <section class="availability-board-section"><div class="section-title"><div><p class="eyebrow dark">БЛИЖАЙШИЕ 14 ДНЕЙ</p><h2>Доступность труппы</h2></div></div><div id="castFreeHints" class="cast-free-hints"></div><div id="adminAvailabilityBoard" class="availability-board-wrap"></div></section>
         <div id="matchSummary" class="match-summary"></div>
         <div id="matchList" class="match-list"></div>
       </section>
@@ -144,8 +145,18 @@
         <button data-status="limited"><i class="dot yellow"></i> С ограничениями</button>
         <button data-status="busy"><i class="dot red"></i> Не могу</button>
       </div>
-      <div id="timeFields" class="time-fields hidden"><label>С<input id="timeFrom" type="time" value="18:00"></label><label>До<input id="timeTo" type="time" value="22:00"></label></div>
+      <div id="timeFields" class="time-fields hidden"><label>С<input id="timeFrom" type="time" value="18:00"></label><label>До <small>(необязательно)</small><input id="timeTo" type="time"></label></div>
       <button id="saveDay" class="primary wide">Сохранить</button>
+    </div>
+  </div>
+
+  <div id="profileModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <button class="modal-close" data-close-profile>×</button>
+      <p class="eyebrow dark">ПРОФИЛЬ</p><h2>Ваш никнейм</h2>
+      <p class="modal-subtitle">Так вас будут видеть администратор и другие участники.</p>
+      <label class="profile-name-field">Никнейм<input id="profileNameInput" type="text" maxlength="40" autocomplete="nickname"></label>
+      <button id="saveProfileName" class="primary wide">Сохранить</button>
     </div>
   </div>
 
@@ -234,6 +245,6 @@
   </div>
 
   <div id="toast" class="toast">Сохранено</div>
-  <script type="module" src="app.js?v=20260902-6"></script>
+  <script type="module" src="app.js?v=20260903-1"></script>
 </body>
 </html>

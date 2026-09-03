@@ -52,11 +52,11 @@ function readLocalJson(key, fallback) {
 
 function limitedRange() {
   const saved = readLocalJson('sbor-limited-range-v1', null);
-  return saved?.from && saved?.to ? saved : { from: '18:00', to: '22:00' };
+  return saved && (saved.from || saved.to) ? { from: saved.from || '', to: saved.to || '' } : { from: '18:00', to: '' };
 }
 
 function rememberLimitedRange(from, to) {
-  if (!from || !to) return;
+  if (!from && !to) return;
   try {
     localStorage.setItem('sbor-limited-range-v1', JSON.stringify({ from, to }));
   } catch (error) {
@@ -173,7 +173,6 @@ function setAuthMessage(form, message = '', success = false) {
 }
 
 function currentName() {
-  if (state.firebaseUser?.uid === BOOTSTRAP_ADMIN_UID) return 'Дашуля';
   return state.profile?.name || state.firebaseUser?.displayName || state.firebaseUser?.email || 'Участник';
 }
 
@@ -283,9 +282,10 @@ async function ensureProfile(user) {
     return { id: user.uid, ...profile, createdAt: null };
   }
   const profile = { id: profileSnapshot.id, ...profileSnapshot.data() };
-  if (user.uid === BOOTSTRAP_ADMIN_UID && (profile.role !== 'admin' || profile.name !== 'Дашуля')) {
-    await setDoc(profileRef, { name: 'Дашуля', role: 'admin' }, { merge: true });
-    profile.name = 'Дашуля';
+  if (user.uid === BOOTSTRAP_ADMIN_UID && (profile.role !== 'admin' || !profile.name || profile.name === '????')) {
+    const adminChanges = { role: 'admin', ...((!profile.name || profile.name === '????') ? { name: 'Дашуля' } : {}) };
+    await setDoc(profileRef, adminChanges, { merge: true });
+    if (adminChanges.name) profile.name = adminChanges.name;
     profile.role = 'admin';
   }
   return profile;
@@ -342,6 +342,7 @@ function subscribeToData() {
     seedDraftParticipants();
     renderTeam();
     renderMatches();
+    renderAdminAvailabilityBoard();
     renderShows();
     renderEvents();
   }, error => toast(readableError(error))));
@@ -357,6 +358,7 @@ function subscribeToData() {
       renderCalendar();
       renderTeam();
       renderEvents();
+      renderAdminAvailabilityBoard();
     },
     error => toast(readableError(error))
   ));
@@ -421,6 +423,7 @@ function subscribeToData() {
     renderShows();
     renderEvents();
     renderTeam();
+    renderAdminAvailabilityBoard();
     renderWeekBuilder();
   }, error => toast(readableError(error))));
 
@@ -535,7 +538,7 @@ function renderCalendar() {
     element.dataset.date = key;
     element.dataset.status = availability?.status || 'none';
     const status = availability
-      ? `<div class="status-pill status-${availability.status}">${labels[availability.status]}${availability.from ? `<small>${availability.from}–${availability.to}</small>` : ''}</div>`
+      ? `<div class="status-pill status-${availability.status}">${labels[availability.status]}${availability.from || availability.to ? `<small>${[availability.from, availability.to].filter(Boolean).join('–')}</small>` : ''}</div>`
       : '<div class="status-pill status-none">+ отметить</div>';
     element.innerHTML = `<div class="day-head"><span class="weekday">${ruDays[date.getDay()]}</span><span class="date-num">${date.getDate()}</span></div><button class="day-edit" aria-label="Точно настроить ${fmt(date)}" title="Точное редактирование">✎</button>${daySlots.length ? `<span class="slot-count">◴ ${daySlots.length} ${daySlots.length === 1 ? 'слот' : 'слота'}</span>` : ''}${status}`;
     element.onclick = event => {
@@ -566,7 +569,7 @@ function openDay(date) {
   $('#modalDate').textContent = niceDate(date);
   $$('[data-status]').forEach(button => button.classList.toggle('selected', button.dataset.status === state.selectedStatus));
   $('#timeFields').classList.toggle('hidden', state.selectedStatus !== 'limited');
-  const range = availability?.from && availability?.to ? availability : limitedRange();
+  const range = availability && (availability.from || availability.to) ? availability : limitedRange();
   $('#timeFrom').value = range.from;
   $('#timeTo').value = range.to;
   $('#dayModal').classList.remove('hidden');
@@ -848,6 +851,26 @@ function renderMatches() {
   }).join('')}</div></article>`).join('') : '<div class="empty-state">Пересечения появятся после создания слотов.</div>';
 }
 
+function renderAdminAvailabilityBoard() {
+  const board = $('#adminAvailabilityBoard');
+  const hints = $('#castFreeHints');
+  if (!board || !hints || !isAdmin()) return;
+  const dates = Array.from({ length: 14 }, (_, index) => iso(dateAt(index)));
+  const participants = state.profiles.filter(profile => isParticipant(profile) && !profile.disabled);
+  const statusFor = (userId, date) => state.allAvailability.find(item => item.userId === userId && item.date === date);
+  const symbols = { free: '✓', limited: '~', busy: '×', none: '·' };
+  const words = { free: 'свободен', limited: 'частично', busy: 'занят', none: 'не отмечено' };
+  const fullyFree = [];
+  shows.forEach(show => {
+    const cast = participants.filter(profile => (profile.shows || []).includes(show.name));
+    dates.forEach(date => {
+      if (cast.length && cast.every(profile => statusFor(profile.id, date)?.status === 'free')) fullyFree.push({ show: show.name, date });
+    });
+  });
+  hints.innerHTML = fullyFree.length ? fullyFree.map(item => `<span>✓ Весь состав «${item.show}» свободен ${niceDate(item.date)}</span>`).join('') : '<small>Подсказки появятся, когда весь состав спектакля отметит один день зелёным.</small>';
+  board.innerHTML = participants.length ? `<table class="availability-board"><thead><tr><th>Участник</th>${dates.map(date => `<th>${ruDays[new Date(`${date}T12:00:00`).getDay()]}<b>${new Date(`${date}T12:00:00`).getDate()}</b></th>`).join('')}</tr></thead><tbody>${participants.map(profile => `<tr><th>${profile.name}</th>${dates.map(date => { const value = statusFor(profile.id, date); const status = value?.status || 'none'; const range = [value?.from, value?.to].filter(Boolean).join('–'); return `<td class="board-${status}" title="${profile.name}: ${words[status]}${range ? `, ${range}` : ''}"><b>${symbols[status]}</b>${range ? `<small>${range}</small>` : ''}</td>`; }).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty-state">Зарегистрированных участников пока нет.</div>';
+}
+
 function renderEvents() {
   const orderedShows = [...shows].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
   $('#eventList').innerHTML = orderedShows.map(show => {
@@ -943,6 +966,7 @@ function renderAll() {
   renderCalendar();
   renderSlots();
   renderMatches();
+  renderAdminAvailabilityBoard();
   renderEvents();
   renderShows();
   renderTeam();
@@ -1157,6 +1181,33 @@ $('#saveDay').onclick = async () => {
     toast(readableError(error));
   }
 };
+
+$('#openProfile').onclick = () => {
+  $('#profileNameInput').value = currentName();
+  $('#profileModal').classList.remove('hidden');
+  setTimeout(() => $('#profileNameInput').focus(), 50);
+};
+
+$('#saveProfileName').onclick = async () => {
+  const name = $('#profileNameInput').value.trim();
+  if (name.length < 2) return toast('Никнейм должен быть не короче двух символов');
+  try {
+    if (state.localMode) {
+      state.profile.name = name;
+      state.profiles = state.profiles.map(profile => profile.id === state.profile.id ? { ...profile, name } : profile);
+      persistLocalFallback();
+    } else {
+      await setDoc(doc(db, 'profiles', state.firebaseUser.uid), { name }, { merge: true });
+    }
+    state.profile.name = name;
+    applyUser();
+    $('#profileModal').classList.add('hidden');
+    toast('Никнейм сохранён');
+  } catch (error) { toast(readableError(error)); }
+};
+
+$$('[data-close-profile]').forEach(button => button.onclick = () => $('#profileModal').classList.add('hidden'));
+$('#profileModal').onclick = event => { if (event.target.id === 'profileModal') event.currentTarget.classList.add('hidden'); };
 
 $$('[data-close]').forEach(button => {
   button.onclick = () => $('#dayModal').classList.add('hidden');
