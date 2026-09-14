@@ -394,6 +394,8 @@ function subscribeToData() {
     }
     state.presets = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
     renderWeekBuilder();
+    renderSlots();
+    renderMatches();
   }, error => toast(readableError(error))));
 
   state.unsubscribers.push(onSnapshot(collection(db, 'shows'), async snapshot => {
@@ -580,7 +582,12 @@ function responseFor(slotId, userId) {
 }
 
 function slotParticipants(slot) {
-  if (Array.isArray(slot.participantIds)) return state.profiles.filter(profile => isParticipant(profile) && !profile.disabled && slot.participantIds.includes(profile.id));
+  const directIds = Array.isArray(slot.participantIds) ? slot.participantIds : [];
+  const presetIds = !slot.participantIdsOverridden && slot.presetId
+    ? (state.presets.find(preset => preset.id === slot.presetId)?.participantIds || [])
+    : [];
+  const participantIds = directIds.length ? directIds : presetIds;
+  if (participantIds.length) return state.profiles.filter(profile => isParticipant(profile) && !profile.disabled && participantIds.includes(profile.id));
   return [];
 }
 
@@ -628,7 +635,8 @@ async function createSlotFromPreset(preset) {
     from,
     to: addMinutes(from, preset.duration || 60),
     place: preset.place || 'Место уточняется',
-    participantIds: preset.participantIds || [],
+    participantIds: [...(preset.participantIds || [])],
+    participantIdsOverridden: false,
     presetId: preset.id,
     createdBy: state.firebaseUser.uid,
     createdAt: serverTimestamp()
@@ -1273,7 +1281,7 @@ function openSlotModal(slotId = null) {
   $('#slotFrom').value = slot?.from || $('#builderTime').value || '14:00';
   $('#slotTo').value = slot?.to || addMinutes($('#slotFrom').value, 60);
   $('#slotPlace').value = slot?.place || '';
-  const selectedPeople = Array.isArray(slot?.participantIds) ? slot.participantIds : [];
+  const selectedPeople = slot ? slotParticipants(slot).map(profile => profile.id) : [];
   $('#slotPeople').innerHTML = state.profiles
     .filter(profile => profile.role !== 'admin' && !profile.disabled)
     .map(profile => `<label><input type="checkbox" value="${profile.id}" ${selectedPeople.includes(profile.id) ? 'checked' : ''}> ${profile.name}</label>`)
@@ -1319,6 +1327,7 @@ $('#saveSlot').onclick = async () => {
       to: $('#slotTo').value,
       place: $('#slotPlace').value.trim() || 'Место уточняется',
       participantIds: [...$('#slotPeople').querySelectorAll('input:checked')].map(input => input.value),
+      participantIdsOverridden: true,
       createdBy: state.firebaseUser.uid,
       createdAt: serverTimestamp()
     };
