@@ -618,6 +618,41 @@ function currentBuilderWeekKeys() {
   return builderWeekDates().map(date => iso(date));
 }
 
+function exportedWeekText() {
+  const dayNames = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+  const lines = ['Всем привет! @all наше расписание на неделю:', ''];
+  builderWeekDates().forEach(date => {
+    const dateKey = iso(date);
+    const daySlots = state.slots.filter(slot => slot.date === dateKey).sort((left, right) => left.from.localeCompare(right.from));
+    if (!daySlots.length) return;
+    lines.push(`${dayNames[date.getDay()]} (${date.getDate()} ${ruMonths[date.getMonth()]}):`);
+    daySlots.forEach(slot => {
+      const people = slotParticipants(slot).map(profile => profile.name).join(', ');
+      const descriptiveTitle = /репетиц|мастер|занят|сбор|прогон|показ/i.test(slot.title || '');
+      const description = descriptiveTitle ? `${slot.title}${people ? ` — ${people}` : ''}` : people || slot.title;
+      lines.push(`${String(slot.from || '').replace(':', '.')} - ${description};`);
+    });
+    lines.push('');
+  });
+  return lines.join('\n').trim();
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.style.position = 'fixed';
+  field.style.opacity = '0';
+  document.body.appendChild(field);
+  field.select();
+  const copied = document.execCommand('copy');
+  field.remove();
+  if (!copied) throw new Error('Буфер обмена недоступен');
+}
+
 function nextBuilderTime(date) {
   const lastSlot = state.slots
     .filter(slot => slot.date === date && slot.to)
@@ -1266,6 +1301,19 @@ $('#copyWeek').onclick = async () => {
 $('#addSlot').onclick = () => {
   if (!isAdmin()) return;
   openSlotModal();
+};
+
+$('#exportWeek').onclick = async () => {
+  if (!state.slots.some(slot => currentBuilderWeekKeys().includes(slot.date))) {
+    toast('На выбранной неделе пока нет блоков');
+    return;
+  }
+  try {
+    await copyText(exportedWeekText());
+    toast('Расписание недели скопировано');
+  } catch (error) {
+    toast('Не удалось скопировать — попробуйте ещё раз');
+  }
 };
 
 function openSlotModal(slotId = null) {

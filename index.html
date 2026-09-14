@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Prata&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260914-1">
+  <link rel="stylesheet" href="styles.css?v=20260914-2">
 </head>
 <body>
   <div class="grain"></div>
@@ -102,7 +102,7 @@
       <section id="slotsPage" class="page">
         <div class="intro-row member-only"><div><p class="eyebrow dark">КОНКРЕТНОЕ ВРЕМЯ</p><h1>Слоты</h1><p class="subtitle">Ответьте по каждому времени отдельно — так администратор сразу увидит реальное пересечение.</p></div></div>
         <section id="weekBuilder" class="week-builder admin-only">
-          <div class="builder-heading"><div><p class="eyebrow dark">БЫСТРОЕ РАСПИСАНИЕ</p><h1>Сетка недели</h1><p class="subtitle">Выберите день и время, затем тапните нужный пресет.</p></div><button id="addSlot" class="secondary">+ Разовый слот</button></div>
+          <div class="builder-heading"><div><p class="eyebrow dark">БЫСТРОЕ РАСПИСАНИЕ</p><h1>Сетка недели</h1><p class="subtitle">Выберите день и время, затем тапните нужный пресет.</p></div><div class="builder-heading-actions"><button id="exportWeek" class="secondary">Скопировать неделю</button><button id="addSlot" class="secondary">+ Разовый слот</button></div></div>
           <div class="week-switcher"><button id="previousWeek" class="icon-button">←</button><strong id="builderWeekLabel"></strong><button id="nextWeek" class="icon-button">→</button></div>
           <div id="builderDays" class="builder-days"></div>
           <div class="builder-time-row"><label>Следующий слот с <input id="builderTime" type="time" value="14:00"></label><span>После добавления время сдвинется автоматически</span></div>
@@ -245,6 +245,6 @@
   </div>
 
   <div id="toast" class="toast">Сохранено</div>
-  <script type="module" src="app.js?v=20260914-1"></script>
+  <script type="module" src="app.js?v=20260914-2"></script>
 </body>
 </html>
