@@ -22,6 +22,7 @@ select{font:inherit;color:inherit;width:100%;padding:14px 15px;background:rgba(2
 .slot-card-foreign{opacity:.5;filter:saturate(.35);background:rgba(232,228,218,.38)}
 .builder-heading-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .cast-free-hints span.time-overlap{background:var(--yellow-bg);color:#755d2b}
+.response-buttons .chosen.inferred{outline:1px dashed currentColor;outline-offset:2px}
 .avatar.cat-avatar{font-size:21px;background:#8d927c}
 .profile-button{border:0;background:transparent;color:inherit;padding:5px;border-radius:6px;cursor:pointer}.profile-button:hover{background:rgba(255,255,255,.45)}
 .profile-name-field{display:grid;gap:8px;font-size:12px;font-weight:700;margin:22px 0}.time-fields label small{font-weight:400;color:var(--muted)}

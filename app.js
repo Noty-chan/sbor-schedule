@@ -359,6 +359,8 @@ function subscribeToData() {
       renderTeam();
       renderEvents();
       renderAdminAvailabilityBoard();
+      renderSlots();
+      renderMatches();
     },
     error => toast(readableError(error))
   ));
@@ -579,6 +581,29 @@ function openDay(date) {
 
 function responseFor(slotId, userId) {
   return state.responses.find(response => response.slotId === slotId && response.userId === userId);
+}
+
+function minutesFromTime(value) {
+  if (!value) return null;
+  const [hours, minutes] = value.split(':').map(Number);
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : null;
+}
+
+function effectiveSlotAnswer(slot, userId) {
+  const explicit = responseFor(slot.id, userId);
+  if (explicit) return { ...explicit, source: 'slot' };
+  const availability = state.allAvailability.find(item => item.userId === userId && item.date === slot.date);
+  if (!availability) return { userId, slotId: slot.id, status: 'none', source: 'none' };
+  if (availability.status === 'free' || availability.status === 'busy') return { userId, slotId: slot.id, status: availability.status, source: 'calendar' };
+  if (availability.status !== 'limited') return { userId, slotId: slot.id, status: 'none', source: 'none' };
+  const slotStart = minutesFromTime(slot.from);
+  const slotEnd = minutesFromTime(slot.to);
+  const availableStart = minutesFromTime(availability.from) ?? 0;
+  const availableEnd = minutesFromTime(availability.to) ?? 24 * 60;
+  if (slotStart === null || slotEnd === null || (!availability.from && !availability.to)) return { userId, slotId: slot.id, status: 'limited', source: 'calendar' };
+  if (slotEnd <= availableStart || slotStart >= availableEnd) return { userId, slotId: slot.id, status: 'busy', source: 'calendar' };
+  if (slotStart >= availableStart && slotEnd <= availableEnd) return { userId, slotId: slot.id, status: 'free', source: 'calendar' };
+  return { userId, slotId: slot.id, status: 'limited', source: 'calendar' };
 }
 
 function slotParticipants(slot) {
@@ -836,15 +861,16 @@ function renderSlots() {
   updateSlotBadge();
   $('#slotList').innerHTML = slots.length ? slots.map(slot => {
     const participants = slotParticipants(slot);
-    const responses = state.responses.filter(response => response.slotId === slot.id && participants.some(profile => profile.id === response.userId));
-    const ownAnswer = responseFor(slot.id, state.firebaseUser?.uid)?.status || 'none';
+    const responses = participants.map(profile => effectiveSlotAnswer(slot, profile.id)).filter(response => response.status !== 'none');
+    const ownAnswer = effectiveSlotAnswer(slot, state.firebaseUser?.uid);
     const free = responses.filter(response => response.status === 'free').length;
     const possible = responses.filter(response => response.status === 'limited').length;
+    const inferred = responses.filter(response => response.source === 'calendar').length;
     const ownSlot = isOwnSlot(slot);
     const action = state.adminView
-      ? `<div class="slot-admin-summary"><strong>${free + possible}/${participants.length}</strong><span>${free} могут · ${possible} возможно</span><button class="small-action" data-edit-slot="${slot.id}">Изменить</button><button class="small-action" data-delete-slot="${slot.id}">Удалить</button></div>`
+      ? `<div class="slot-admin-summary"><strong>${free + possible}/${participants.length}</strong><span>${free} могут · ${possible} возможно${inferred ? ` · ${inferred} по календарю` : ''}</span><button class="small-action" data-edit-slot="${slot.id}">Изменить</button><button class="small-action" data-delete-slot="${slot.id}">Удалить</button></div>`
       : ownSlot
-        ? `<div class="slot-actions"><div class="response-buttons"><button data-slot="${slot.id}" data-response="free" class="${ownAnswer === 'free' ? 'chosen' : ''}" title="Могу">✓</button><button data-slot="${slot.id}" data-response="limited" class="${ownAnswer === 'limited' ? 'chosen' : ''}" title="Возможно">~</button><button data-slot="${slot.id}" data-response="busy" class="${ownAnswer === 'busy' ? 'chosen' : ''}" title="Не могу">×</button></div><div class="response-legend">могу · возможно · не могу</div></div>`
+        ? `<div class="slot-actions"><div class="response-buttons"><button data-slot="${slot.id}" data-response="free" class="${ownAnswer.status === 'free' ? `chosen ${ownAnswer.source === 'calendar' ? 'inferred' : ''}` : ''}" title="Могу">✓</button><button data-slot="${slot.id}" data-response="limited" class="${ownAnswer.status === 'limited' ? `chosen ${ownAnswer.source === 'calendar' ? 'inferred' : ''}` : ''}" title="Возможно">~</button><button data-slot="${slot.id}" data-response="busy" class="${ownAnswer.status === 'busy' ? `chosen ${ownAnswer.source === 'calendar' ? 'inferred' : ''}` : ''}" title="Не могу">×</button></div><div class="response-legend">${ownAnswer.source === 'calendar' ? 'подтянуто из календаря · можно изменить' : 'могу · возможно · не могу'}</div></div>`
         : '<div class="slot-observer-note">Не ваш слот</div>';
     const dayStatus = state.availability[slot.date]?.status;
     const dayHint = ownSlot && dayStatus === 'busy' ? '<span class="slot-warning">В календаре отмечено: не могу</span>' : ownSlot && dayStatus === 'limited' ? '<span class="slot-warning">В календаре есть ограничения</span>' : '';
@@ -863,7 +889,7 @@ function renderSlots() {
 }
 
 function updateSlotBadge() {
-  const pending = state.slots.filter(slot => slotParticipants(slot).some(profile => profile.id === state.firebaseUser?.uid) && !responseFor(slot.id, state.firebaseUser?.uid)).length;
+  const pending = state.slots.filter(slot => slotParticipants(slot).some(profile => profile.id === state.firebaseUser?.uid) && effectiveSlotAnswer(slot, state.firebaseUser?.uid).status === 'none').length;
   $('#slotBadge').textContent = pending || state.slots.length;
   $('#slotBadge').title = pending ? `Неотвеченных слотов: ${pending}` : 'Все слоты отвечены';
 }
@@ -872,7 +898,7 @@ function renderMatches() {
   if (!$('#matchList')) return;
   const ranked = state.slots.map(slot => {
     const participants = slotParticipants(slot);
-    const responses = state.responses.filter(response => response.slotId === slot.id && participants.some(profile => profile.id === response.userId));
+    const responses = participants.map(profile => effectiveSlotAnswer(slot, profile.id)).filter(response => response.status !== 'none');
     return {
       slot,
       participants,
@@ -888,9 +914,10 @@ function renderMatches() {
   const total = Math.max(1, ranked.reduce((sum, item) => sum + item.participants.length, 0));
   $('#matchSummary').innerHTML = `<div class="summary-card"><strong>${best ? best.free + best.limited : 0}/${best?.participants.length || 0}</strong><span>лучшее пересечение</span></div><div class="summary-card"><strong>${full}</strong><span>слотов без отказов</span></div><div class="summary-card"><strong>${Math.round(answerCount / total * 100)}%</strong><span>ответов собрано</span></div>`;
   $('#matchList').innerHTML = ranked.length ? ranked.map(({ slot, participants, responses, free, limited }) => `<article class="match-card"><div class="match-head"><div><h3>${slot.title}</h3><p>${niceDate(slot.date)} · ${slot.from}–${slot.to} · ${slot.production}</p></div><div class="match-score"><strong>${free + limited}/${participants.length}</strong><span>доступны</span></div></div><div class="member-responses">${participants.map(profile => {
-    const status = responses.find(response => response.userId === profile.id)?.status || 'none';
+    const answer = effectiveSlotAnswer(slot, profile.id);
+    const status = answer.status;
     const word = { free: 'может', limited: 'возможно', busy: 'не может', none: 'нет ответа' }[status];
-    return `<div class="member-chip ${status}">${profile.name.split(' ')[0]} · ${word}</div>`;
+    return `<div class="member-chip ${status}">${profile.name.split(' ')[0]} · ${word}${answer.source === 'calendar' ? ' · по дню' : ''}</div>`;
   }).join('')}</div></article>`).join('') : '<div class="empty-state">Пересечения появятся после создания слотов.</div>';
 }
 
