@@ -903,14 +903,39 @@ function renderAdminAvailabilityBoard() {
   const statusFor = (userId, date) => state.allAvailability.find(item => item.userId === userId && item.date === date);
   const symbols = { free: '✓', limited: '~', busy: '×', none: '·' };
   const words = { free: 'свободен', limited: 'частично', busy: 'занят', none: 'не отмечено' };
-  const fullyFree = [];
-  shows.forEach(show => {
-    const cast = participants.filter(profile => (profile.shows || []).includes(show.name));
-    dates.forEach(date => {
-      if (cast.length && cast.every(profile => statusFor(profile.id, date)?.status === 'free')) fullyFree.push({ show: show.name, date });
-    });
-  });
-  hints.innerHTML = fullyFree.length ? fullyFree.map(item => `<span>✓ Весь состав «${item.show}» свободен ${niceDate(item.date)}</span>`).join('') : '<small>Подсказки появятся, когда весь состав спектакля отметит один день зелёным.</small>';
+  const timeToMinutes = value => {
+    if (!value) return null;
+    const [hours, minutes] = value.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+  const minutesToTime = value => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+  const commonWindow = (group, date) => {
+    let start = 0;
+    let end = 24 * 60;
+    for (const profile of group) {
+      const value = statusFor(profile.id, date);
+      if (!value || value.status === 'busy' || value.status === 'none') return null;
+      if (value.status === 'limited') {
+        if (!value.from && !value.to) return null;
+        start = Math.max(start, timeToMinutes(value.from) ?? 0);
+        end = Math.min(end, timeToMinutes(value.to) ?? 24 * 60);
+      }
+    }
+    return start < end ? { start, end, fullDay: start === 0 && end === 24 * 60 } : null;
+  };
+  const groups = [
+    ...shows.map(show => ({ name: show.name, people: participants.filter(profile => (profile.shows || []).includes(show.name)) })),
+    ...state.presets.map(preset => ({ name: preset.name, people: participants.filter(profile => (preset.participantIds || []).includes(profile.id)) }))
+  ].filter(group => group.people.length);
+  const intersections = [];
+  groups.forEach(group => dates.forEach(date => {
+    const window = commonWindow(group.people, date);
+    if (window) intersections.push({ ...group, date, window });
+  }));
+  hints.innerHTML = intersections.length ? intersections.map(item => {
+    const range = item.window.fullDay ? 'весь день' : `${minutesToTime(item.window.start)}–${minutesToTime(item.window.end)}`;
+    return `<span class="${item.window.fullDay ? '' : 'time-overlap'}">✓ «${item.name}»: ${niceDate(item.date)}, ${range}</span>`;
+  }).join('') : '<small>Подсказки появятся, когда у всего состава спектакля или пресета найдётся общее свободное время.</small>';
   board.innerHTML = participants.length ? `<table class="availability-board"><thead><tr><th>Участник</th>${dates.map(date => `<th>${ruDays[new Date(`${date}T12:00:00`).getDay()]}<b>${new Date(`${date}T12:00:00`).getDate()}</b></th>`).join('')}</tr></thead><tbody>${participants.map(profile => `<tr><th>${profile.name}</th>${dates.map(date => { const value = statusFor(profile.id, date); const status = value?.status || 'none'; const range = [value?.from, value?.to].filter(Boolean).join('–'); return `<td class="board-${status}" title="${profile.name}: ${words[status]}${range ? `, ${range}` : ''}"><b>${symbols[status]}</b>${range ? `<small>${range}</small>` : ''}</td>`; }).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty-state">Зарегистрированных участников пока нет.</div>';
 }
 
