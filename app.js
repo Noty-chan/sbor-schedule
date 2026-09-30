@@ -889,6 +889,23 @@ function proposalForPreset(preset, dates) {
   if (!participants.length) return null;
   const duration = Number(preset.duration || 60);
   const preferredStarts = ['16:00', '17:00', '18:00', '15:00', '14:00', '19:00', '13:00', '12:00', '11:00', '10:00', '20:00'];
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const historyStart = new Date(today);
+  historyStart.setDate(today.getDate() - 21);
+  const historicalSlots = state.slots.filter(slot => slot.date < iso(today)
+    && slot.date >= iso(historyStart)
+    && (slot.presetId === preset.id || (!slot.presetId && slot.title === preset.name)));
+  const weekdayCounts = historicalSlots.reduce((counts, slot) => {
+    const day = new Date(`${slot.date}T12:00:00`).getDay();
+    counts[day] = (counts[day] || 0) + 1;
+    return counts;
+  }, {});
+  const historicalTimes = historicalSlots.map(slot => minutesFromTime(slot.from)).filter(value => value !== null);
+  const averageHistoryTime = historicalTimes.length ? historicalTimes.reduce((sum, value) => sum + value, 0) / historicalTimes.length : null;
+  const historicalDates = historicalSlots.map(slot => slot.date).sort();
+  const lastHistoricalDate = historicalDates[historicalDates.length - 1];
+  const daysSinceLast = lastHistoricalDate ? Math.round((today - new Date(`${lastHistoricalDate}T12:00:00`)) / 86400000) : 21;
   let best = null;
   dates.forEach(dateValue => preferredStarts.forEach(from => {
     const date = iso(dateValue);
@@ -908,10 +925,26 @@ function proposalForPreset(preset, dates) {
     const known = answers.filter(status => status !== 'none').length;
     if (!known) return;
     const available = free + limited;
-    const score = available * 10 + free * 2 + known - busy * 4;
-    const candidate = { preset, date, from, to, free, limited, busy, known, total: participants.length, score };
+    const sameDayLoad = participants.reduce((sum, profile) => sum + state.slots.filter(slot => slot.date === date && rawSlotParticipantIds(slot).includes(profile.id)).length, 0);
+    const nearbyLoad = participants.reduce((sum, profile) => sum + state.slots.filter(slot => {
+      if (!rawSlotParticipantIds(slot).includes(profile.id)) return false;
+      const distance = Math.abs((new Date(`${slot.date}T12:00:00`) - dateValue) / 86400000);
+      return distance === 1;
+    }).length, 0);
+    const weekday = dateValue.getDay();
+    const weekdayFit = (weekdayCounts[weekday] || 0) * 3;
+    const timeFit = averageHistoryTime === null ? 0 : Math.max(0, 6 - Math.abs(startMinutes - averageHistoryTime) / 60);
+    const availabilityScore = free * 30 + limited * 14 - busy * 35 - (participants.length - known) * 5;
+    const loadPenalty = sameDayLoad * 9 + nearbyLoad * 2;
+    const score = availabilityScore + known * 2 + weekdayFit + timeFit - loadPenalty;
+    const candidate = { preset, date, from, to, free, limited, busy, known, total: participants.length, score, sameDayLoad, weekdayFit, timeFit };
     if (!best || candidate.score > best.score) best = candidate;
   }));
+  if (!best) return null;
+  const availableRatio = (best.free + best.limited * 0.6) / Math.max(1, best.total);
+  best.rank = availableRatio * 100 + Math.min(21, daysSinceLast) * 0.7 - historicalSlots.length * 4;
+  best.historyCount = historicalSlots.length;
+  best.daysSinceLast = daysSinceLast;
   return best;
 }
 
@@ -932,10 +965,12 @@ function renderSundayProposals() {
   label.textContent = `${fmt(dates[0])} — ${fmt(dates[6])}`;
   const weekKeys = dates.map(date => iso(date));
   const usedPresetIds = new Set(state.slots.filter(slot => weekKeys.includes(slot.date)).map(slot => slot.presetId).filter(Boolean));
-  const proposals = state.presets.filter(preset => !usedPresetIds.has(preset.id)).map(preset => proposalForPreset(preset, dates)).filter(Boolean);
+  const proposals = state.presets.filter(preset => !usedPresetIds.has(preset.id)).map(preset => proposalForPreset(preset, dates)).filter(Boolean).sort((left, right) => right.rank - left.rank);
   list.innerHTML = proposals.length ? proposals.map(proposal => {
     const ready = proposal.free + proposal.limited;
-    return `<article class="proposal-card"><strong>${proposal.preset.name}</strong><span>${niceDate(proposal.date)} · ${proposal.from}–${proposal.to}</span><small>${ready}/${proposal.total} доступны · отметились ${proposal.known}/${proposal.total}</small><button class="secondary" data-accept-proposal="${proposal.preset.id}" data-proposal-date="${proposal.date}" data-proposal-time="${proposal.from}">Добавить в сетку</button></article>`;
+    const history = proposal.historyCount ? `${proposal.historyCount} реп. за 3 недели · последняя ${proposal.daysSinceLast} дн. назад` : 'за 3 недели таких репетиций не было';
+    const load = proposal.sameDayLoad ? `нагрузка в этот день: ${proposal.sameDayLoad}` : 'у состава нет других репетиций в этот день';
+    return `<article class="proposal-card"><strong>${proposal.preset.name}</strong><span>${niceDate(proposal.date)} · ${proposal.from}–${proposal.to}</span><small>${ready}/${proposal.total} доступны · отметились ${proposal.known}/${proposal.total}</small><small>${history}</small><small>${load}</small><button class="secondary" data-accept-proposal="${proposal.preset.id}" data-proposal-date="${proposal.date}" data-proposal-time="${proposal.from}">Добавить в сетку</button></article>`;
   }).join('') : '<div class="proposal-empty">Пока нет предложений: участники ещё не отметили время или все пресеты уже стоят в сетке.</div>';
   $$('[data-accept-proposal]').forEach(button => {
     button.onclick = async () => {
