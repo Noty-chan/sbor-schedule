@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Prata&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260919-2">
+  <link rel="stylesheet" href="styles.css?v=20260930-1">
 </head>
 <body>
   <div class="grain"></div>
@@ -66,6 +66,7 @@
       </nav>
       <div class="sidebar-bottom">
         <button id="adminToggle" class="admin-toggle"><span>↗</span><span><small>Режим</small>Участник</span></button>
+        <button id="openNotifications" class="guide-link">Уведомления</button>
         <button id="openGuide" class="guide-link">Как пользоваться</button>
         <button id="logoutButton" class="logout">Выйти</button>
       </div>
@@ -145,7 +146,14 @@
         <button data-status="limited"><i class="dot yellow"></i> С ограничениями</button>
         <button data-status="busy"><i class="dot red"></i> Не могу</button>
       </div>
-      <div id="timeFields" class="time-fields hidden"><label>С<input id="timeFrom" type="time" value="18:00"></label><label>До <small>(необязательно)</small><input id="timeTo" type="time"></label></div>
+      <div id="timeFields" class="availability-times hidden">
+        <div class="time-fields"><label>С<input id="timeFrom" type="time" value="18:00"></label><label>До <small>(необязательно)</small><input id="timeTo" type="time"></label></div>
+        <div id="secondTimeFields" class="second-time-fields hidden">
+          <div class="interval-heading"><strong>Второе окно</strong><button id="removeSecondInterval" class="text-button" type="button">Убрать</button></div>
+          <div class="time-fields"><label>С<input id="timeFrom2" type="time"></label><label>До <small>(необязательно)</small><input id="timeTo2" type="time"></label></div>
+        </div>
+        <button id="addSecondInterval" class="secondary interval-add" type="button">+ Добавить второе окно</button>
+      </div>
       <button id="saveDay" class="primary wide">Сохранить</button>
     </div>
   </div>
@@ -234,9 +242,9 @@
       <h2>Как пользоваться «Сбором»</h2>
       <p class="guide-lead">Отмечайте доступность на две недели и отвечайте на конкретные репетиции — этого достаточно.</p>
       <div class="guide-steps">
-        <article><b>1</b><div><strong>Отметьте дни</strong><p>На странице «Доступность» тапайте по дню: зелёный — свободны, жёлтый — можете не всё время, красный — не можете. Карандаш задаёт точный интервал.</p></div></article>
+        <article><b>1</b><div><strong>Отметьте дни</strong><p>На странице «Доступность» тапайте по дню: зелёный — свободны, жёлтый — можете не всё время, красный — не можете. Карандаш задаёт одно или два окна времени.</p></div></article>
         <article><b>2</b><div><strong>Ответьте на слоты</strong><p>Ваши репетиции идут первыми: выберите ✓ могу, ~ возможно или × не могу. Чужие слоты показаны ниже серым — только для общего расписания.</p></div></article>
-        <article><b>3</b><div><strong>Проверяйте изменения</strong><p>Администратор может менять время и состав. Заглядывайте в слоты перед репетицией; выбранный ответ подсвечивается цветом.</p></div></article>
+        <article><b>3</b><div><strong>Включите уведомления</strong><p>Кнопка находится внизу меню. Можно отдельно получать изменения расписания и напоминания перед репетицией.</p></div></article>
         <article><b>4</b><div><strong>Составы привяжет администратор</strong><p>После регистрации ничего дополнительно создавать не нужно. Даша свяжет аккаунт с вашим именем и спектаклями.</p></div></article>
       </div>
       <div class="guide-note"><strong>Не получается войти?</strong><span>Введите почту и нажмите «Восстановить пароль».</span></div>
@@ -244,7 +252,25 @@
     </div>
   </div>
 
+  <div id="notificationModal" class="modal-backdrop hidden">
+    <div class="modal notification-modal">
+      <button class="modal-close" data-close-notifications aria-label="Закрыть">×</button>
+      <p class="eyebrow dark">УВЕДОМЛЕНИЯ</p>
+      <h2>Не пропускать изменения</h2>
+      <p id="notificationSupport" class="modal-subtitle"></p>
+      <div class="notification-options">
+        <label><input id="notifySlotChanges" type="checkbox"><span><strong>Изменения расписания</strong><small>Новый, изменённый или отменённый слот с вашим участием.</small></span></label>
+        <label><input id="notifyReminders" type="checkbox"><span><strong>Напоминания</strong><small>Перед ближайшей репетицией, где вы участвуете.</small></span></label>
+        <label id="reminderLeadRow" class="notification-select">За сколько напомнить<select id="notificationLead"><option value="2">за 2 часа</option><option value="6">за 6 часов</option><option value="24">за сутки</option></select></label>
+        <label id="adminNotificationOption" class="hidden"><input id="notifyAdminActivity" type="checkbox"><span><strong>Ответы для Даши</strong><small>Новые отметки доступности и ответы участников.</small></span></label>
+      </div>
+      <button id="enableNotifications" class="primary wide">Разрешить уведомления</button>
+      <button id="saveNotifications" class="secondary wide notification-save">Сохранить настройки</button>
+      <p class="notification-footnote">На iPhone уведомления надёжнее работают, если добавить сайт на экран «Домой». Уведомления при полностью закрытом браузере подключим через Firebase Messaging.</p>
+    </div>
+  </div>
+
   <div id="toast" class="toast">Сохранено</div>
-  <script type="module" src="app.js?v=20260919-2"></script>
+  <script type="module" src="app.js?v=20260930-1"></script>
 </body>
 </html>

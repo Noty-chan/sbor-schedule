@@ -1,11 +1,13 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import {
+  browserLocalPersistence,
   createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
+  setPersistence,
   updateProfile
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import {
@@ -27,6 +29,9 @@ import { firebaseConfig } from './firebase-config.js';
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
+const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch(error => {
+  console.warn('Не удалось включить постоянную сессию Firebase', error);
+});
 const BOOTSTRAP_ADMIN_UID = 'gABqRTDUcDRd4VH0lxswMIJw7B83';
 
 const ruDays = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
@@ -50,15 +55,30 @@ function readLocalJson(key, fallback) {
   }
 }
 
-function limitedRange() {
-  const saved = readLocalJson('sbor-limited-range-v1', null);
-  return saved && (saved.from || saved.to) ? { from: saved.from || '', to: saved.to || '' } : { from: '18:00', to: '' };
+function availabilityIntervals(value) {
+  const prepared = Array.isArray(value?.intervals)
+    ? value.intervals.map(interval => ({ from: interval?.from || '', to: interval?.to || '' })).filter(interval => interval.from || interval.to).slice(0, 2)
+    : [];
+  if (prepared.length) return prepared;
+  return value?.from || value?.to ? [{ from: value.from || '', to: value.to || '' }] : [];
 }
 
-function rememberLimitedRange(from, to) {
-  if (!from && !to) return;
+function formatIntervals(value) {
+  return availabilityIntervals(value).map(interval => [interval.from, interval.to].filter(Boolean).join('–')).filter(Boolean).join(' · ');
+}
+
+function limitedRange() {
+  const saved = readLocalJson('sbor-limited-range-v1', null);
+  const intervals = availabilityIntervals(saved);
+  const normalized = intervals.length ? intervals : [{ from: '18:00', to: '' }];
+  return { from: normalized[0].from, to: normalized[0].to, intervals: normalized };
+}
+
+function rememberLimitedRange(intervals) {
+  const prepared = availabilityIntervals({ intervals });
+  if (!prepared.length) return;
   try {
-    localStorage.setItem('sbor-limited-range-v1', JSON.stringify({ from, to }));
+    localStorage.setItem('sbor-limited-range-v1', JSON.stringify({ from: prepared[0].from, to: prepared[0].to, intervals: prepared }));
   } catch (error) {
     console.warn('Не удалось запомнить диапазон времени', error);
   }
@@ -101,6 +121,8 @@ const state = {
   seedingShows: false,
   seedingDrafts: false,
   cloudMigrationStarted: false,
+  notificationSnapshots: { slots: false, availability: false, responses: false },
+  reminderTimer: null,
   unsubscribers: []
 };
 
@@ -182,6 +204,106 @@ function isAdmin() {
 
 function isParticipant(profile) {
   return profile?.role !== 'admin' && profile?.id !== BOOTSTRAP_ADMIN_UID && !profile?.claimedBy;
+}
+
+function notificationStorageKey() {
+  return `sbor-notifications-v1-${state.firebaseUser?.uid || 'guest'}`;
+}
+
+function notificationSettings() {
+  return { slotChanges: false, reminders: false, reminderLead: 24, adminActivity: false, ...readLocalJson(notificationStorageKey(), {}) };
+}
+
+function saveNotificationSettings(settings) {
+  try {
+    localStorage.setItem(notificationStorageKey(), JSON.stringify(settings));
+    return true;
+  } catch (error) {
+    console.warn('Не удалось сохранить настройки уведомлений', error);
+    return false;
+  }
+}
+
+function notificationsSupported() {
+  return 'Notification' in window && 'serviceWorker' in navigator;
+}
+
+async function notificationRegistration() {
+  if (!notificationsSupported()) return null;
+  try {
+    return await navigator.serviceWorker.register('./sw.js');
+  } catch (error) {
+    console.warn('Service worker не зарегистрирован', error);
+    return null;
+  }
+}
+
+async function browserNotification(title, body, tag) {
+  if (!notificationsSupported() || Notification.permission !== 'granted') return;
+  const registration = await notificationRegistration();
+  if (!registration) return;
+  try {
+    await registration.showNotification(title, { body, tag, icon: './icon.svg', badge: './icon.svg' });
+  } catch (error) {
+    console.warn('Не удалось показать уведомление', error);
+  }
+}
+
+function rawSlotParticipantIds(slot) {
+  const directIds = Array.isArray(slot?.participantIds) ? slot.participantIds : [];
+  const presetIds = !slot?.participantIdsOverridden && slot?.presetId
+    ? (state.presets.find(preset => preset.id === slot.presetId)?.participantIds || [])
+    : [];
+  return directIds.length ? directIds : presetIds;
+}
+
+function notifySlotSnapshot(snapshot, previousSlots) {
+  if (!state.notificationSnapshots.slots) {
+    state.notificationSnapshots.slots = true;
+    return;
+  }
+  const settings = notificationSettings();
+  if (!notificationsSupported() || isAdmin() || !settings.slotChanges || Notification.permission !== 'granted') return;
+  const uid = state.firebaseUser?.uid;
+  snapshot.docChanges().forEach(change => {
+    const current = change.doc.data();
+    const previous = previousSlots.find(slot => slot.id === change.doc.id);
+    const relevant = rawSlotParticipantIds(current).includes(uid) || rawSlotParticipantIds(previous).includes(uid);
+    if (!relevant) return;
+    const action = change.type === 'added' ? 'Новая репетиция' : change.type === 'removed' ? 'Репетиция отменена' : 'Репетиция изменена';
+    browserNotification(action, `${current.title || previous?.title || 'Слот'} · ${niceDate(current.date || previous?.date)} · ${current.from || previous?.from || 'время уточняется'}`, `slot-${change.doc.id}`);
+  });
+}
+
+function notifyAdminSnapshot(kind, snapshot) {
+  const ready = state.notificationSnapshots[kind];
+  state.notificationSnapshots[kind] = true;
+  const settings = notificationSettings();
+  if (!notificationsSupported() || !ready || !isAdmin() || !settings.adminActivity || Notification.permission !== 'granted') return;
+  const changes = snapshot.docChanges().filter(change => change.type !== 'removed' && change.doc.data().userId !== state.firebaseUser?.uid);
+  if (!changes.length) return;
+  const latest = changes[changes.length - 1].doc.data();
+  const person = profileById(latest.userId)?.name || 'Участник';
+  const body = kind === 'availability'
+    ? `${person} обновил доступность на ${niceDate(latest.date)}`
+    : `${person} ответил на слот расписания`;
+  browserNotification('Новый ответ для Даши', changes.length > 1 ? `${body} · ещё изменений: ${changes.length - 1}` : body, `admin-${kind}-${Date.now()}`);
+}
+
+function checkSlotReminders() {
+  const settings = notificationSettings();
+  if (!notificationsSupported() || !settings.reminders || Notification.permission !== 'granted' || isAdmin()) return;
+  const uid = state.firebaseUser?.uid;
+  const now = Date.now();
+  const leadMs = Number(settings.reminderLead || 24) * 60 * 60 * 1000;
+  state.slots.filter(slot => rawSlotParticipantIds(slot).includes(uid)).forEach(slot => {
+    const start = new Date(`${slot.date}T${slot.from || '00:00'}:00`).getTime();
+    if (!Number.isFinite(start) || start <= now || start - now > leadMs) return;
+    const marker = `sbor-reminder-v1-${uid}-${slot.id}-${slot.date}-${slot.from}-${settings.reminderLead}`;
+    if (localStorage.getItem(marker)) return;
+    localStorage.setItem(marker, String(Date.now()));
+    browserNotification('Скоро репетиция', `${slot.title || 'Репетиция'} · ${niceDate(slot.date)} в ${slot.from || 'уточняется'}`, `reminder-${slot.id}`);
+  });
 }
 
 function profileById(userId) {
@@ -318,7 +440,7 @@ async function migrateLocalAdminData() {
     writeCount += 1;
   });
   Object.entries(localAvailability).forEach(([date, value]) => {
-    batch.set(doc(db, 'availability', `${state.firebaseUser.uid}_${date}`), { userId: state.firebaseUser.uid, date, status: value.status, from: value.from || null, to: value.to || null, updatedAt: serverTimestamp() }, { merge: true });
+    batch.set(doc(db, 'availability', `${state.firebaseUser.uid}_${date}`), { userId: state.firebaseUser.uid, date, status: value.status, from: value.from || null, to: value.to || null, intervals: availabilityIntervals(value), updatedAt: serverTimestamp() }, { merge: true });
     writeCount += 1;
   });
   if (writeCount) await batch.commit();
@@ -353,6 +475,7 @@ function subscribeToData() {
   state.unsubscribers.push(onSnapshot(
     availabilitySource,
     snapshot => {
+      notifyAdminSnapshot('availability', snapshot);
       state.allAvailability = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
       state.availability = Object.fromEntries(state.allAvailability.filter(item => item.userId === uid).map(item => [item.date, item]));
       renderCalendar();
@@ -366,17 +489,21 @@ function subscribeToData() {
   ));
 
   state.unsubscribers.push(onSnapshot(collection(db, 'slots'), snapshot => {
+    const previousSlots = state.slots;
     state.slots = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+    notifySlotSnapshot(snapshot, previousSlots);
     renderCalendar();
     renderSlots();
     renderMatches();
     renderWeekBuilder();
+    checkSlotReminders();
   }, error => toast(readableError(error))));
 
   const responsesSource = isAdmin()
     ? collection(db, 'responses')
     : query(collection(db, 'responses'), where('userId', '==', uid));
   state.unsubscribers.push(onSnapshot(responsesSource, snapshot => {
+    notifyAdminSnapshot('responses', snapshot);
     state.responses = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
     renderSlots();
     renderMatches();
@@ -462,6 +589,24 @@ function closeGuide() {
   $('#guideModal').classList.add('hidden');
 }
 
+function openNotificationSettings() {
+  const settings = notificationSettings();
+  const supported = notificationsSupported();
+  $('#notifySlotChanges').checked = settings.slotChanges;
+  $('#notifyReminders').checked = settings.reminders;
+  $('#notificationLead').value = String(settings.reminderLead || 24);
+  $('#notifyAdminActivity').checked = settings.adminActivity;
+  $('#adminNotificationOption').classList.toggle('hidden', !isAdmin());
+  $('#reminderLeadRow').classList.toggle('hidden', !settings.reminders);
+  $('#notificationSupport').textContent = !supported
+    ? 'Этот браузер не поддерживает уведомления сайта.'
+    : Notification.permission === 'granted' ? 'Уведомления разрешены на этом устройстве.'
+      : Notification.permission === 'denied' ? 'Уведомления запрещены в настройках браузера.'
+        : 'Сначала разрешите уведомления для этого сайта.';
+  $('#enableNotifications').classList.toggle('hidden', !supported || Notification.permission === 'granted');
+  $('#notificationModal').classList.remove('hidden');
+}
+
 function applyUser() {
   if (!state.profile && !state.firebaseUser) return;
   const name = currentName();
@@ -505,6 +650,7 @@ async function saveAvailability(date, value) {
     status: value.status,
     from: value.from || null,
     to: value.to || null,
+    intervals: availabilityIntervals(value),
     updatedAt: serverTimestamp()
   });
 }
@@ -541,8 +687,9 @@ function renderCalendar() {
     element.className = `day ${index === 0 ? 'today' : ''}`;
     element.dataset.date = key;
     element.dataset.status = availability?.status || 'none';
+    const rangeLabel = formatIntervals(availability);
     const status = availability
-      ? `<div class="status-pill status-${availability.status}">${labels[availability.status]}${availability.from || availability.to ? `<small>${[availability.from, availability.to].filter(Boolean).join('–')}</small>` : ''}</div>`
+      ? `<div class="status-pill status-${availability.status}">${labels[availability.status]}${rangeLabel ? `<small>${rangeLabel}</small>` : ''}</div>`
       : '<div class="status-pill status-none">+ отметить</div>';
     element.innerHTML = `<div class="day-head"><span class="weekday">${ruDays[date.getDay()]}</span><span class="date-num">${date.getDate()}</span></div><button class="day-edit" aria-label="Точно настроить ${fmt(date)}" title="Точное редактирование">✎</button>${daySlots.length ? `<span class="slot-count">◴ ${daySlots.length} ${daySlots.length === 1 ? 'слот' : 'слота'}</span>` : ''}${status}`;
     element.onclick = event => {
@@ -573,9 +720,14 @@ function openDay(date) {
   $('#modalDate').textContent = niceDate(date);
   $$('[data-status]').forEach(button => button.classList.toggle('selected', button.dataset.status === state.selectedStatus));
   $('#timeFields').classList.toggle('hidden', state.selectedStatus !== 'limited');
-  const range = availability && (availability.from || availability.to) ? availability : limitedRange();
-  $('#timeFrom').value = range.from;
-  $('#timeTo').value = range.to;
+  const range = availability && availabilityIntervals(availability).length ? availability : limitedRange();
+  const intervals = availabilityIntervals(range);
+  $('#timeFrom').value = intervals[0]?.from || '';
+  $('#timeTo').value = intervals[0]?.to || '';
+  $('#timeFrom2').value = intervals[1]?.from || '';
+  $('#timeTo2').value = intervals[1]?.to || '';
+  $('#secondTimeFields').classList.toggle('hidden', !intervals[1]);
+  $('#addSecondInterval').classList.toggle('hidden', Boolean(intervals[1]));
   $('#dayModal').classList.remove('hidden');
 }
 
@@ -598,11 +750,13 @@ function effectiveSlotAnswer(slot, userId) {
   if (availability.status !== 'limited') return { userId, slotId: slot.id, status: 'none', source: 'none' };
   const slotStart = minutesFromTime(slot.from);
   const slotEnd = minutesFromTime(slot.to);
-  const availableStart = minutesFromTime(availability.from) ?? 0;
-  const availableEnd = minutesFromTime(availability.to) ?? 24 * 60;
-  if (slotStart === null || slotEnd === null || (!availability.from && !availability.to)) return { userId, slotId: slot.id, status: 'limited', source: 'calendar' };
-  if (slotEnd <= availableStart || slotStart >= availableEnd) return { userId, slotId: slot.id, status: 'busy', source: 'calendar' };
-  if (slotStart >= availableStart && slotEnd <= availableEnd) return { userId, slotId: slot.id, status: 'free', source: 'calendar' };
+  const intervals = availabilityIntervals(availability).map(interval => ({
+    start: minutesFromTime(interval.from) ?? 0,
+    end: minutesFromTime(interval.to) ?? 24 * 60
+  })).filter(interval => interval.start < interval.end);
+  if (slotStart === null || slotEnd === null || !intervals.length) return { userId, slotId: slot.id, status: 'limited', source: 'calendar' };
+  if (intervals.some(interval => slotStart >= interval.start && slotEnd <= interval.end)) return { userId, slotId: slot.id, status: 'free', source: 'calendar' };
+  if (!intervals.some(interval => slotStart < interval.end && slotEnd > interval.start)) return { userId, slotId: slot.id, status: 'busy', source: 'calendar' };
   return { userId, slotId: slot.id, status: 'limited', source: 'calendar' };
 }
 
@@ -937,18 +1091,21 @@ function renderAdminAvailabilityBoard() {
   };
   const minutesToTime = value => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
   const commonWindow = (group, date) => {
-    let start = 0;
-    let end = 24 * 60;
+    let windows = [{ start: 0, end: 24 * 60 }];
     for (const profile of group) {
       const value = statusFor(profile.id, date);
-      if (!value || value.status === 'busy' || value.status === 'none') return null;
-      if (value.status === 'limited') {
-        if (!value.from && !value.to) return null;
-        start = Math.max(start, timeToMinutes(value.from) ?? 0);
-        end = Math.min(end, timeToMinutes(value.to) ?? 24 * 60);
-      }
+      if (!value || value.status === 'busy' || value.status === 'none') return [];
+      const personWindows = value.status === 'free'
+        ? [{ start: 0, end: 24 * 60 }]
+        : availabilityIntervals(value).map(interval => ({ start: timeToMinutes(interval.from) ?? 0, end: timeToMinutes(interval.to) ?? 24 * 60 })).filter(interval => interval.start < interval.end);
+      if (!personWindows.length) return [];
+      windows = windows.flatMap(window => personWindows.map(personWindow => ({
+        start: Math.max(window.start, personWindow.start),
+        end: Math.min(window.end, personWindow.end)
+      })).filter(intersection => intersection.start < intersection.end));
+      if (!windows.length) return [];
     }
-    return start < end ? { start, end, fullDay: start === 0 && end === 24 * 60 } : null;
+    return windows;
   };
   const groups = [
     ...shows.map(show => ({ name: show.name, people: participants.filter(profile => (profile.shows || []).includes(show.name)) })),
@@ -956,14 +1113,15 @@ function renderAdminAvailabilityBoard() {
   ].filter(group => group.people.length);
   const intersections = [];
   groups.forEach(group => dates.forEach(date => {
-    const window = commonWindow(group.people, date);
-    if (window) intersections.push({ ...group, date, window });
+    const windows = commonWindow(group.people, date);
+    if (windows.length) intersections.push({ ...group, date, windows });
   }));
   hints.innerHTML = intersections.length ? intersections.map(item => {
-    const range = item.window.fullDay ? 'весь день' : `${minutesToTime(item.window.start)}–${minutesToTime(item.window.end)}`;
-    return `<span class="${item.window.fullDay ? '' : 'time-overlap'}">✓ «${item.name}»: ${niceDate(item.date)}, ${range}</span>`;
+    const fullDay = item.windows.length === 1 && item.windows[0].start === 0 && item.windows[0].end === 24 * 60;
+    const range = fullDay ? 'весь день' : item.windows.map(window => `${minutesToTime(window.start)}–${minutesToTime(window.end)}`).join(' · ');
+    return `<span class="${fullDay ? '' : 'time-overlap'}">✓ «${item.name}»: ${niceDate(item.date)}, ${range}</span>`;
   }).join('') : '<small>Подсказки появятся, когда у всего состава спектакля или пресета найдётся общее свободное время.</small>';
-  board.innerHTML = participants.length ? `<table class="availability-board"><thead><tr><th>Участник</th>${dates.map(date => `<th>${ruDays[new Date(`${date}T12:00:00`).getDay()]}<b>${new Date(`${date}T12:00:00`).getDate()}</b></th>`).join('')}</tr></thead><tbody>${participants.map(profile => `<tr><th>${profile.name}</th>${dates.map(date => { const value = statusFor(profile.id, date); const status = value?.status || 'none'; const range = [value?.from, value?.to].filter(Boolean).join('–'); return `<td class="board-${status}" title="${profile.name}: ${words[status]}${range ? `, ${range}` : ''}"><b>${symbols[status]}</b>${range ? `<small>${range}</small>` : ''}</td>`; }).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty-state">Зарегистрированных участников пока нет.</div>';
+  board.innerHTML = participants.length ? `<table class="availability-board"><thead><tr><th>Участник</th>${dates.map(date => `<th>${ruDays[new Date(`${date}T12:00:00`).getDay()]}<b>${new Date(`${date}T12:00:00`).getDate()}</b></th>`).join('')}</tr></thead><tbody>${participants.map(profile => `<tr><th>${profile.name}</th>${dates.map(date => { const value = statusFor(profile.id, date); const status = value?.status || 'none'; const range = formatIntervals(value); return `<td class="board-${status}" title="${profile.name}: ${words[status]}${range ? `, ${range}` : ''}"><b>${symbols[status]}</b>${range ? `<small>${range}</small>` : ''}</td>`; }).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty-state">Зарегистрированных участников пока нет.</div>';
 }
 
 function renderEvents() {
@@ -1075,6 +1233,7 @@ $('#loginButton').onclick = async () => {
   setAuthMessage('login');
   setBusy(button, true);
   try {
+    await authPersistenceReady;
     await signInWithEmailAndPassword(auth, $('#loginEmail').value.trim(), $('#loginPassword').value);
   } catch (error) {
     setAuthMessage('login', readableError(error));
@@ -1116,6 +1275,7 @@ $('#registerButton').onclick = async () => {
   setBusy(button, true);
   try { sessionStorage.setItem('sbor-show-guide', '1'); } catch (error) {}
   try {
+    await authPersistenceReady;
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(credential.user, { displayName: name });
     await setDoc(doc(db, 'profiles', credential.user.uid), {
@@ -1153,6 +1313,32 @@ $$('[data-close-guide]').forEach(button => { button.onclick = closeGuide; });
 $('#guideModal').onclick = event => {
   if (event.target.id === 'guideModal') closeGuide();
 };
+
+$('#openNotifications').onclick = openNotificationSettings;
+$('#notifyReminders').onchange = () => $('#reminderLeadRow').classList.toggle('hidden', !$('#notifyReminders').checked);
+$('#enableNotifications').onclick = async () => {
+  if (!notificationsSupported()) return toast('Уведомления не поддерживаются этим браузером');
+  const permission = await Notification.requestPermission();
+  if (permission === 'granted') {
+    await notificationRegistration();
+    browserNotification('Уведомления включены', '«Сбор» сообщит об изменениях расписания.', 'notifications-enabled');
+  }
+  openNotificationSettings();
+};
+$('#saveNotifications').onclick = () => {
+  const saved = saveNotificationSettings({
+    slotChanges: $('#notifySlotChanges').checked,
+    reminders: $('#notifyReminders').checked,
+    reminderLead: Number($('#notificationLead').value),
+    adminActivity: isAdmin() && $('#notifyAdminActivity').checked
+  });
+  if (!saved) return toast('Браузер не разрешил сохранить настройки');
+  $('#notificationModal').classList.add('hidden');
+  checkSlotReminders();
+  toast('Настройки уведомлений сохранены');
+};
+$$('[data-close-notifications]').forEach(button => { button.onclick = () => $('#notificationModal').classList.add('hidden'); });
+$('#notificationModal').onclick = event => { if (event.target.id === 'notificationModal') event.currentTarget.classList.add('hidden'); };
 
 $$('.nav-link').forEach(button => {
   button.onclick = () => {
@@ -1257,18 +1443,34 @@ $$('[data-status]').forEach(button => {
   };
 });
 
+$('#addSecondInterval').onclick = () => {
+  $('#secondTimeFields').classList.remove('hidden');
+  $('#addSecondInterval').classList.add('hidden');
+  $('#timeFrom2').focus();
+};
+
+$('#removeSecondInterval').onclick = () => {
+  $('#timeFrom2').value = '';
+  $('#timeTo2').value = '';
+  $('#secondTimeFields').classList.add('hidden');
+  $('#addSecondInterval').classList.remove('hidden');
+};
+
 $('#saveDay').onclick = async () => {
   if (!state.selectedStatus) {
     toast('Выберите статус');
     return;
   }
+  const intervals = state.selectedStatus === 'limited'
+    ? [{ from: $('#timeFrom').value, to: $('#timeTo').value }, ...($('#secondTimeFields').classList.contains('hidden') ? [] : [{ from: $('#timeFrom2').value, to: $('#timeTo2').value }])].filter(interval => interval.from || interval.to)
+    : [];
   const value = {
     status: state.selectedStatus,
-    ...(state.selectedStatus === 'limited' ? { from: $('#timeFrom').value, to: $('#timeTo').value } : {})
+    ...(state.selectedStatus === 'limited' ? { from: intervals[0]?.from || '', to: intervals[0]?.to || '', intervals } : {})
   };
   try {
     await saveAvailability(state.selectedDate, value);
-    if (state.selectedStatus === 'limited') rememberLimitedRange(value.from, value.to);
+    if (state.selectedStatus === 'limited') rememberLimitedRange(intervals);
     if (state.localMode) renderCalendar();
     $('#dayModal').classList.add('hidden');
     toast();
@@ -1336,6 +1538,7 @@ $('#copyWeek').onclick = async () => {
         status: source.status,
         from: source.from || null,
         to: source.to || null,
+        intervals: availabilityIntervals(source),
         updatedAt: serverTimestamp()
       });
     } else {
@@ -1628,6 +1831,8 @@ $('#userModal').onclick = event => {
 
 onAuthStateChanged(auth, async user => {
   clearSubscriptions();
+  clearInterval(state.reminderTimer);
+  state.reminderTimer = null;
   state.firebaseUser = user;
   state.profile = null;
   state.profiles = [];
@@ -1640,6 +1845,7 @@ onAuthStateChanged(auth, async user => {
   state.seedingShows = false;
   state.seedingDrafts = false;
   state.cloudMigrationStarted = false;
+  state.notificationSnapshots = { slots: false, availability: false, responses: false };
   if (!user) {
     showAuth();
     return;
@@ -1653,10 +1859,16 @@ onAuthStateChanged(auth, async user => {
     }
     showApp();
     subscribeToData();
+    state.reminderTimer = setInterval(checkSlotReminders, 5 * 60 * 1000);
   } catch (error) {
     loadLocalFallback(user);
     showApp();
     renderAll();
     toast('Облачная база закрыта — работает локальный режим');
   }
+});
+
+notificationRegistration();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.firebaseUser) checkSlotReminders();
 });
