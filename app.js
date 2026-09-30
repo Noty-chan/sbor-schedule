@@ -496,6 +496,8 @@ function subscribeToData() {
     renderSlots();
     renderMatches();
     renderWeekBuilder();
+    renderTeam();
+    renderArchive();
     checkSlotReminders();
   }, error => toast(readableError(error))));
 
@@ -507,6 +509,7 @@ function subscribeToData() {
     state.responses = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
     renderSlots();
     renderMatches();
+    renderArchive();
   }, error => toast(readableError(error))));
 
   state.unsubscribers.push(onSnapshot(collection(db, 'presets'), async snapshot => {
@@ -870,8 +873,86 @@ async function createSlotFromPreset(preset) {
   }
 }
 
+function nextWeekAfterSunday() {
+  const start = new Date();
+  start.setHours(12, 0, 0, 0);
+  start.setDate(start.getDate() + 1);
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+}
+
+function proposalForPreset(preset, dates) {
+  const participants = state.profiles.filter(profile => !profile.disabled && (preset.participantIds || []).includes(profile.id));
+  if (!participants.length) return null;
+  const duration = Number(preset.duration || 60);
+  const preferredStarts = ['16:00', '17:00', '18:00', '15:00', '14:00', '19:00', '13:00', '12:00', '11:00', '10:00', '20:00'];
+  let best = null;
+  dates.forEach(dateValue => preferredStarts.forEach(from => {
+    const date = iso(dateValue);
+    const to = addMinutes(from, duration);
+    const startMinutes = minutesFromTime(from);
+    const endMinutes = minutesFromTime(to);
+    const answers = participants.map(profile => {
+      const conflict = state.slots.some(slot => slot.date === date
+        && rawSlotParticipantIds(slot).includes(profile.id)
+        && startMinutes < (minutesFromTime(slot.to) ?? 24 * 60)
+        && endMinutes > (minutesFromTime(slot.from) ?? 0));
+      return conflict ? 'busy' : effectiveSlotAnswer({ id: `proposal-${preset.id}-${date}-${from}`, date, from, to }, profile.id).status;
+    });
+    const free = answers.filter(status => status === 'free').length;
+    const limited = answers.filter(status => status === 'limited').length;
+    const busy = answers.filter(status => status === 'busy').length;
+    const known = answers.filter(status => status !== 'none').length;
+    if (!known) return;
+    const available = free + limited;
+    const score = available * 10 + free * 2 + known - busy * 4;
+    const candidate = { preset, date, from, to, free, limited, busy, known, total: participants.length, score };
+    if (!best || candidate.score > best.score) best = candidate;
+  }));
+  return best;
+}
+
+function renderSundayProposals() {
+  const list = $('#sundayProposalList');
+  const label = $('#proposalWeekLabel');
+  if (!list || !label || !isAdmin()) return;
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  if (today.getDay() !== 0) {
+    const nextSunday = new Date(today);
+    nextSunday.setDate(today.getDate() + (7 - today.getDay()));
+    label.textContent = `следующий расчёт — ${fmt(nextSunday)}`;
+    list.innerHTML = '<div class="proposal-empty">В воскресенье здесь автоматически появятся лучшие варианты на следующую неделю по отметкам участников.</div>';
+    return;
+  }
+  const dates = nextWeekAfterSunday();
+  label.textContent = `${fmt(dates[0])} — ${fmt(dates[6])}`;
+  const weekKeys = dates.map(date => iso(date));
+  const usedPresetIds = new Set(state.slots.filter(slot => weekKeys.includes(slot.date)).map(slot => slot.presetId).filter(Boolean));
+  const proposals = state.presets.filter(preset => !usedPresetIds.has(preset.id)).map(preset => proposalForPreset(preset, dates)).filter(Boolean);
+  list.innerHTML = proposals.length ? proposals.map(proposal => {
+    const ready = proposal.free + proposal.limited;
+    return `<article class="proposal-card"><strong>${proposal.preset.name}</strong><span>${niceDate(proposal.date)} · ${proposal.from}–${proposal.to}</span><small>${ready}/${proposal.total} доступны · отметились ${proposal.known}/${proposal.total}</small><button class="secondary" data-accept-proposal="${proposal.preset.id}" data-proposal-date="${proposal.date}" data-proposal-time="${proposal.from}">Добавить в сетку</button></article>`;
+  }).join('') : '<div class="proposal-empty">Пока нет предложений: участники ещё не отметили время или все пресеты уже стоят в сетке.</div>';
+  $$('[data-accept-proposal]').forEach(button => {
+    button.onclick = async () => {
+      const preset = state.presets.find(item => item.id === button.dataset.acceptProposal);
+      if (!preset) return;
+      state.builderWeekOffset = 1;
+      state.builderDate = button.dataset.proposalDate;
+      $('#builderTime').value = button.dataset.proposalTime;
+      await createSlotFromPreset(preset);
+      renderWeekBuilder();
+    };
+  });
+}
+
 function renderWeekBuilder() {
   if (!isAdmin() || !$('#weekBuilder')) return;
+  renderSundayProposals();
   const dates = builderWeekDates();
   if (!state.builderDate || !dates.some(date => iso(date) === state.builderDate)) {
     state.builderDate = iso(dates[0]);
@@ -1001,12 +1082,17 @@ function renderSlotFilters() {
   });
 }
 
+function inPlanningHorizon(slot) {
+  return slot.date >= iso(dateAt(0)) && slot.date <= iso(dateAt(13));
+}
+
 function renderSlots() {
   if (!$('#slotList')) return;
   renderSlotFilters();
   const uid = state.firebaseUser?.uid;
   const isOwnSlot = slot => slotParticipants(slot).some(profile => profile.id === uid);
   const slots = state.slots
+    .filter(inPlanningHorizon)
     .filter(slot => state.slotFilter === 'Все' || (state.slotFilter === 'Мои' ? slotParticipants(slot).some(profile => profile.id === state.firebaseUser?.uid) : slot.production === state.slotFilter))
     .sort((left, right) => {
       if (!state.adminView && isOwnSlot(left) !== isOwnSlot(right)) return isOwnSlot(left) ? -1 : 1;
@@ -1043,14 +1129,31 @@ function renderSlots() {
 }
 
 function updateSlotBadge() {
-  const pending = state.slots.filter(slot => slotParticipants(slot).some(profile => profile.id === state.firebaseUser?.uid) && effectiveSlotAnswer(slot, state.firebaseUser?.uid).status === 'none').length;
-  $('#slotBadge').textContent = pending || state.slots.length;
+  const currentSlots = state.slots.filter(inPlanningHorizon);
+  const pending = currentSlots.filter(slot => slotParticipants(slot).some(profile => profile.id === state.firebaseUser?.uid) && effectiveSlotAnswer(slot, state.firebaseUser?.uid).status === 'none').length;
+  $('#slotBadge').textContent = pending || currentSlots.length;
   $('#slotBadge').title = pending ? `Неотвеченных слотов: ${pending}` : 'Все слоты отвечены';
+}
+
+function renderPendingPeople() {
+  const container = $('#pendingPeople');
+  if (!container || !isAdmin()) return;
+  const dates = Array.from({ length: 14 }, (_, index) => iso(dateAt(index)));
+  const endDate = dates[dates.length - 1];
+  const startDate = dates[0];
+  const people = state.profiles.filter(profile => isParticipant(profile) && !profile.disabled && profile.email).map(profile => {
+    const missingDays = dates.filter(date => !state.allAvailability.some(item => item.userId === profile.id && item.date === date)).length;
+    const relevantSlots = state.slots.filter(slot => slot.date >= startDate && slot.date <= endDate && rawSlotParticipantIds(slot).includes(profile.id));
+    const pendingSlots = relevantSlots.filter(slot => effectiveSlotAnswer(slot, profile.id).status === 'none');
+    return { profile, missingDays, pendingSlots };
+  }).filter(item => item.missingDays || item.pendingSlots.length).sort((left, right) => right.pendingSlots.length - left.pendingSlots.length || right.missingDays - left.missingDays);
+  container.innerHTML = people.length ? people.map(item => `<article class="pending-person"><strong>${item.profile.name}</strong><span>${item.pendingSlots.length ? `<b>${item.pendingSlots.length}</b> без ответа по слотам` : 'Все слоты отвечены'} · ${item.missingDays ? `<b>${item.missingDays}</b> дней не отмечено` : 'дни отмечены'}</span></article>`).join('') : '<div class="empty-state">Все участники заполнили доступность и ответили на свои слоты.</div>';
 }
 
 function renderMatches() {
   if (!$('#matchList')) return;
-  const ranked = state.slots.map(slot => {
+  renderPendingPeople();
+  const ranked = state.slots.filter(inPlanningHorizon).map(slot => {
     const participants = slotParticipants(slot);
     const responses = participants.map(profile => effectiveSlotAnswer(slot, profile.id)).filter(response => response.status !== 'none');
     return {
@@ -1187,6 +1290,17 @@ function renderShowCastCount() {
 
 function renderTeam() {
   if (!$('#teamTable')) return;
+  const admin = isAdmin();
+  const uid = state.firebaseUser?.uid;
+  const today = iso(dateAt(0));
+  const sharedSlotsWith = profileId => state.slots.filter(slot => {
+    const ids = rawSlotParticipantIds(slot);
+    return ids.includes(uid) && ids.includes(profileId);
+  });
+  $('#teamSubtitle').textContent = admin
+    ? 'Фильтруйте участников по спектаклям и проверяйте доступность.'
+    : 'Здесь видны люди, с которыми у вас есть хотя бы одна общая репетиция.';
+  $('#teamThirdHeading').textContent = admin ? 'Ближайшие 14 дней' : 'Общие репетиции';
   const filters = ['Все', ...shows.map(show => show.name)];
   $('#filters').innerHTML = filters.map(name => `<button class="filter ${state.filter === name ? 'active' : ''}" data-filter="${name}">${name}</button>`).join('');
   $$('[data-filter]').forEach(button => {
@@ -1195,7 +1309,9 @@ function renderTeam() {
       renderTeam();
     };
   });
-  const profiles = state.profiles.filter(profile => isParticipant(profile) && (state.filter === 'Все' || (profile.shows || []).includes(state.filter)));
+  const profiles = state.profiles.filter(profile => isParticipant(profile)
+    && (state.filter === 'Все' || (profile.shows || []).includes(state.filter))
+    && (admin || (profile.id !== uid && sharedSlotsWith(profile.id).length > 0)));
   const newProfiles = state.profiles.filter(profile => profile.email && profile.role !== 'admin' && !profile.disabled && profile.setupComplete !== true && !(profile.shows || []).length);
   $('#newAccounts').classList.toggle('hidden', !newProfiles.length);
   $('#newAccounts').innerHTML = newProfiles.length ? `<div><strong>Новые аккаунты</strong><span>${newProfiles.length} ждут настройки</span></div><div class="new-account-list">${newProfiles.map(profile => `<button data-manage-user="${profile.id}"><b>${profile.name}</b><span>Назначить составы →</span></button>`).join('')}</div>` : '';
@@ -1207,11 +1323,33 @@ function renderTeam() {
     const marked = statuses.filter(status => status !== 'none').length;
     const busy = statuses.filter(status => status === 'busy').length;
     const availability = `<div class="availability-strip" title="Отмечено ${marked} из 14 дней">${statuses.map((status, index) => `<i class="${status}" title="${niceDate(days[index])}: ${{ free: 'свободен', limited: 'ограничения', busy: 'не может', none: 'нет ответа' }[status]}"></i>`).join('')}</div><small class="availability-caption">${marked}/14 отмечено${busy ? ` · ${busy} не может` : ''}</small>`;
-    return `<tr class="${profile.disabled ? 'access-disabled' : ''}"><td><div class="person"><span class="mini-avatar">${initials}</span><span><strong>${profile.name}</strong><br><small>${profile.pending ? 'Заготовка' : profile.role === 'admin' ? 'Администратор' : 'Участник'}</small></span></div></td><td>${(profile.shows || []).join(', ') || 'Пока не назначен'}</td><td>${availability}</td><td class="admin-only">${actions}</td></tr>`;
+    const sharedSlots = sharedSlotsWith(profile.id).filter(slot => slot.date >= today).sort((left, right) => `${left.date}${left.from}`.localeCompare(`${right.date}${right.from}`)).slice(0, 3);
+    const shared = sharedSlots.length ? `<div class="shared-rehearsals">${sharedSlots.map(slot => `<span><b>${slot.from}</b> ${niceDate(slot.date)}<small> · ${slot.title}</small></span>`).join('')}</div>` : '<small class="availability-caption">Общие репетиции остались в архиве</small>';
+    return `<tr class="${profile.disabled ? 'access-disabled' : ''}"><td><div class="person"><span class="mini-avatar">${initials}</span><span><strong>${profile.name}</strong><br><small>${profile.pending ? 'Заготовка' : profile.role === 'admin' ? 'Администратор' : 'Участник'}</small></span></div></td><td>${(profile.shows || []).join(', ') || 'Пока не назначен'}</td><td>${admin ? availability : shared}</td><td class="admin-only">${actions}</td></tr>`;
   }).join('');
+  if (!profiles.length) $('#teamTable').innerHTML = `<tr><td colspan="4"><div class="empty-state">${admin ? 'Участников пока нет.' : 'Общие репетиции пока не назначены.'}</div></td></tr>`;
   $$('[data-manage-user]').forEach(button => {
     button.onclick = () => openUserModal(button.dataset.manageUser);
   });
+}
+
+function renderArchive() {
+  const container = $('#archiveList');
+  if (!container) return;
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const cutoff = new Date(today);
+  cutoff.setMonth(cutoff.getMonth() - 2);
+  const todayKey = iso(today);
+  const cutoffKey = iso(cutoff);
+  const archived = state.slots.filter(slot => slot.date < todayKey && slot.date >= cutoffKey)
+    .sort((left, right) => `${right.date}${right.from}`.localeCompare(`${left.date}${left.from}`));
+  container.innerHTML = archived.length ? archived.map(slot => {
+    const participants = slotParticipants(slot);
+    const answers = participants.map(profile => effectiveSlotAnswer(slot, profile.id));
+    const attended = answers.filter(answer => answer.status === 'free' || answer.status === 'limited').length;
+    return `<article class="archive-card"><div class="archive-date"><strong>${slot.from || '—'}</strong><span>${niceDate(slot.date)}</span></div><div class="archive-main"><b>${slot.title}</b><span>${slot.production} · ${slot.place || 'место не указано'}</span></div><div class="archive-meta">${participants.length} участников${isAdmin() ? ` · ${attended} могли` : ''}</div></article>`;
+  }).join('') : '<div class="empty-state">За последние два месяца прошедших репетиций пока нет.</div>';
 }
 
 function renderAll() {
@@ -1223,6 +1361,7 @@ function renderAll() {
   renderEvents();
   renderShows();
   renderTeam();
+  renderArchive();
   renderWeekBuilder();
   const now = new Date();
   $('#todayLabel').textContent = `${ruDays[now.getDay()]}, ${fmt(now)}`;
@@ -1346,7 +1485,7 @@ $$('.nav-link').forEach(button => {
     button.classList.add('active');
     $$('.page').forEach(page => page.classList.remove('active'));
     $(`#${button.dataset.page}Page`).classList.add('active');
-    $('#pageTitle').textContent = { schedule: 'Доступность', slots: isAdmin() ? 'Сетка недели' : 'Слоты', matches: 'Ответы участников', shows: 'Спектакли', team: 'Участники' }[button.dataset.page];
+    $('#pageTitle').textContent = { schedule: 'Доступность', slots: isAdmin() ? 'Сетка недели' : 'Слоты', matches: 'Ответы участников', shows: 'Спектакли', team: 'Участники', archive: 'Архив' }[button.dataset.page];
     $('.sidebar').classList.remove('open');
   };
 });

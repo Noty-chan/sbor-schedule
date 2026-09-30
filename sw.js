@@ -1,5 +1,5 @@
-const CACHE_NAME = 'sbor-shell-20260930';
-const SHELL = ['./', './index.html', './styles.css?v=20260930-1', './app.js?v=20260930-1', './firebase-config.js', './icon.svg'];
+const CACHE_NAME = 'sbor-shell-20261001';
+const SHELL = ['./', './index.html', './styles.css?v=20261001-1', './app.js?v=20261001-1', './firebase-config.js', './icon.svg'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL)).catch(() => undefined));

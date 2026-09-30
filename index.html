@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Prata&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260930-1">
+  <link rel="stylesheet" href="styles.css?v=20261001-1">
 </head>
 <body>
   <div class="grain"></div>
@@ -63,6 +63,7 @@
         <button class="nav-link admin-only" data-page="matches"><span class="nav-icon">⌁</span> Ответы участников</button>
         <button class="nav-link" data-page="shows"><span class="nav-icon">◇</span> Спектакли</button>
         <button class="nav-link" data-page="team"><span class="nav-icon">◎</span> Участники</button>
+        <button class="nav-link" data-page="archive"><span class="nav-icon">◷</span> Архив</button>
       </nav>
       <div class="sidebar-bottom">
         <button id="adminToggle" class="admin-toggle"><span>↗</span><span><small>Режим</small>Участник</span></button>
@@ -104,6 +105,7 @@
         <div class="intro-row member-only"><div><p class="eyebrow dark">КОНКРЕТНОЕ ВРЕМЯ</p><h1>Слоты</h1><p class="subtitle">Ответьте по каждому времени отдельно — так администратор сразу увидит реальное пересечение.</p></div></div>
         <section id="weekBuilder" class="week-builder admin-only">
           <div class="builder-heading"><div><p class="eyebrow dark">БЫСТРОЕ РАСПИСАНИЕ</p><h1>Сетка недели</h1><p class="subtitle">Выберите день и время, затем тапните нужный пресет.</p></div><div class="builder-heading-actions"><button id="exportWeek" class="secondary">Скопировать неделю</button><button id="addSlot" class="secondary">+ Разовый слот</button></div></div>
+          <section class="sunday-proposals"><div class="day-schedule-heading"><div><p class="eyebrow dark">АВТОМАТИЧЕСКИ ПО ВОСКРЕСЕНЬЯМ</p><h2>Предложения на неделю</h2></div><span id="proposalWeekLabel"></span></div><div id="sundayProposalList" class="proposal-list"></div></section>
           <div class="week-switcher"><button id="previousWeek" class="icon-button">←</button><strong id="builderWeekLabel"></strong><button id="nextWeek" class="icon-button">→</button></div>
           <div id="builderDays" class="builder-days"></div>
           <div class="builder-time-row"><label>Следующий слот с <input id="builderTime" type="time" value="14:00"></label><span>После добавления время сдвинется автоматически</span></div>
@@ -118,6 +120,7 @@
 
       <section id="matchesPage" class="page">
         <div class="intro-row"><div><p class="eyebrow dark">ГОТОВНОСТЬ СОСТАВОВ</p><h1>Ответы участников</h1><p class="subtitle">По каждому блоку видно, кто может, кто сомневается и кто ещё не ответил.</p></div></div>
+        <section class="pending-section"><div class="section-title"><div><p class="eyebrow dark">ТРЕБУЕТ ВНИМАНИЯ</p><h2>Кто ещё не ответил</h2></div></div><div id="pendingPeople" class="pending-people"></div></section>
         <section class="availability-board-section"><div class="section-title"><div><p class="eyebrow dark">БЛИЖАЙШИЕ 14 ДНЕЙ</p><h2>Доступность труппы</h2></div></div><div id="castFreeHints" class="cast-free-hints"></div><div id="adminAvailabilityBoard" class="availability-board-wrap"></div></section>
         <div id="matchSummary" class="match-summary"></div>
         <div id="matchList" class="match-list"></div>
@@ -129,10 +132,15 @@
       </section>
 
       <section id="teamPage" class="page">
-        <div class="intro-row"><div><p class="eyebrow dark">ТРУППА</p><h1>Участники</h1><p class="subtitle">Фильтруйте участников по спектаклям и проверяйте доступность.</p></div></div>
+        <div class="intro-row"><div><p class="eyebrow dark">ТРУППА</p><h1>Участники</h1><p id="teamSubtitle" class="subtitle">Фильтруйте участников по спектаклям и проверяйте доступность.</p></div></div>
         <section id="newAccounts" class="new-accounts admin-only hidden"></section>
         <div id="filters" class="filters"></div>
-        <div class="table-wrap"><table><thead><tr><th>Участник</th><th>Спектакли</th><th>Ближайшие 14 дней</th><th class="admin-only">Действия</th></tr></thead><tbody id="teamTable"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Участник</th><th>Спектакли</th><th id="teamThirdHeading">Ближайшие 14 дней</th><th class="admin-only">Действия</th></tr></thead><tbody id="teamTable"></tbody></table></div>
+      </section>
+
+      <section id="archivePage" class="page">
+        <div class="intro-row"><div><p class="eyebrow dark">ПОСЛЕДНИЕ ДВА МЕСЯЦА</p><h1>Архив расписания</h1><p class="subtitle">Прошедшие репетиции остаются под рукой два месяца, после чего скрываются из архива.</p></div></div>
+        <div id="archiveList" class="archive-list"></div>
       </section>
     </main>
   </div>
@@ -271,6 +279,6 @@
   </div>
 
   <div id="toast" class="toast">Сохранено</div>
-  <script type="module" src="app.js?v=20260930-1"></script>
+  <script type="module" src="app.js?v=20261001-1"></script>
 </body>
 </html>
